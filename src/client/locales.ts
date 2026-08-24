@@ -1,8 +1,8 @@
 export const NS = 'dsh-gemini-subscription' as const
 
 export const zh = {
-  title: 'Google Gemini 订阅',
-  intro: '使用 Google 账号一键登录，在 DSH 中直接调用 Gemini 2.5 Pro、Gemini 3.7 Flash、Thinking 深度思考与多模态识图模型。',
+  title: 'AGY 订阅',
+  intro: '使用 Google 账号一键登录，在 DSH 中直接调用 Google Antigravity (AGY) 订阅的高级模型、深度思考与多模态识图能力。',
   account: 'Google 账号',
   signedOut: '尚未登录',
   signedIn: '已登录',
@@ -32,9 +32,9 @@ export const zh = {
   latency: '延迟',
   models: '支持模型',
   modelsList: 'Gemini 2.5 Pro (1M/2M 上下文), Gemini 2.5 Flash, Gemini 2.5 Flash-Lite, Gemini 3.7 Flash (Thinking), Gemini 3.1 Pro Preview',
-  quickQuota: '在输入框旁显示 Gemini 状态',
+  quickQuota: '在输入框旁显示 AGY 状态',
   quickQuotaHint: '仅在当前会话选中 gemini-subscription 模型时显示。',
-  quickQuotaLabel: 'Gemini',
+  quickQuotaLabel: 'AGY',
   quickQuotaLoading: '…',
   thinkingBudget: '默认思考预算 (Thinking Budget)',
   thinkingBudgetHint: '配置 Gemini 深度思考时的 Token 预算上限（如 8192 或 16384）。',
@@ -58,8 +58,8 @@ export const zh = {
 }
 
 export const en = {
-  title: 'Google Gemini Subscription',
-  intro: 'Sign in with your Google account to use Gemini 2.5 Pro, Gemini 3.7 Flash, Thinking deep reasoning, and multimodal models directly in DSH.',
+  title: 'AGY Subscription',
+  intro: 'Sign in with your Google account to access Google Antigravity (AGY) subscription models and deep reasoning directly in DSH.',
   account: 'Google Account',
   signedOut: 'Signed Out',
   signedIn: 'Signed In',
@@ -89,9 +89,9 @@ export const en = {
   latency: 'Latency',
   models: 'Supported Models',
   modelsList: 'Gemini 2.5 Pro (1M/2M context), Gemini 2.5 Flash, Gemini 2.5 Flash-Lite, Gemini 3.7 Flash (Thinking), Gemini 3.1 Pro Preview',
-  quickQuota: 'Show Gemini status in composer',
+  quickQuota: 'Show AGY status in composer',
   quickQuotaHint: 'Visible when a gemini-subscription model is selected.',
-  quickQuotaLabel: 'Gemini',
+  quickQuotaLabel: 'AGY',
   quickQuotaLoading: '...',
   thinkingBudget: 'Default Thinking Budget',
   thinkingBudgetHint: 'Token budget for Gemini deep reasoning (e.g. 8192 or 16384).',

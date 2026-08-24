@@ -1,9 +1,9 @@
 export const PROVIDER_ID = 'gemini-subscription' as const
-export const PROVIDER_NAME = 'Google Gemini（Gemini 订阅）' as const
+export const PROVIDER_NAME = 'Antigravity（AGY 订阅）' as const
 export const ROUTE_PREFIX = '/api/gemini-subscription' as const
 export const NS = 'dsh-gemini-subscription' as const
 export const GEMINI_SEARCH_PROVIDER_ID = 'gemini-search' as const
-export const GEMINI_SEARCH_PROVIDER_NAME = 'Google Gemini Search Grounding' as const
+export const GEMINI_SEARCH_PROVIDER_NAME = 'Google Antigravity Search Grounding' as const
 
 export const GOOGLE_OAUTH_AUTHORIZE_URL = 'https://accounts.google.com/o/oauth2/v2/auth' as const
 export const GOOGLE_OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token' as const
