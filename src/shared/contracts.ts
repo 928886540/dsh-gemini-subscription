@@ -37,7 +37,21 @@ export interface QuotaBucketDto {
   windows: QuotaWindowDto[]
 }
 
+export interface QuotaCpaEntityDto {
+  name: string
+  remainingPercent: number
+  usedPercent: number
+  resetsAt: number | null
+}
+
+export interface QuotaCpaRowDto {
+  tag: string
+  claude: QuotaCpaEntityDto
+  gemini: QuotaCpaEntityDto
+}
+
 export interface QuotaStatusDto {
+  cpaRows?: QuotaCpaRowDto[]
   buckets: QuotaBucketDto[]
   tier: string | null
   tierDisplayName: string | null
