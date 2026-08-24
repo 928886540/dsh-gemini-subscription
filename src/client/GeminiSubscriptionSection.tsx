@@ -308,27 +308,36 @@ export function GeminiSubscriptionSection({ t }: Props): React.JSX.Element {
                       </span>
                     </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>
-                      <span>{t('quotaRemaining')}: <strong style={{ color: remaining > 20 ? '#4ade80' : '#f87171' }}>{remaining}%</strong></span>
-                      <span>{t('quotaUsed')}: {used}%</span>
-                    </div>
-
-                    <div style={{ width: '100%', height: '6px', background: 'rgba(255, 255, 255, 0.1)', borderRadius: '3px', overflow: 'hidden' }}>
-                      <div
-                        style={{
-                          width: `${remaining}%`,
-                          height: '100%',
-                          background: remaining > 20 ? 'linear-gradient(90deg, #38bdf8, #4ade80)' : '#f87171',
-                          borderRadius: '3px',
-                          transition: 'width 0.3s ease',
-                        }}
-                      />
-                    </div>
-
-                    {resetTimeStr && (
-                      <div style={{ marginTop: '8px', fontSize: '11px', color: '#64748b' }}>
-                        {t('quotaResetAt')}: {resetTimeStr}
+                    {typeof bucket.creditAmount === 'number' ? (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', color: '#cbd5e1' }}>
+                        <span>{t('creditBalance')}:</span>
+                        <strong style={{ color: '#38bdf8', fontSize: '14px' }}>{bucket.creditAmount.toLocaleString()} Credits</strong>
                       </div>
+                    ) : (
+                      <>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>
+                          <span>{t('quotaRemaining')}: <strong style={{ color: remaining > 20 ? '#4ade80' : '#f87171' }}>{remaining}%</strong></span>
+                          <span>{t('quotaUsed')}: {used}%</span>
+                        </div>
+
+                        <div style={{ width: '100%', height: '6px', background: 'rgba(255, 255, 255, 0.1)', borderRadius: '3px', overflow: 'hidden' }}>
+                          <div
+                            style={{
+                              width: `${remaining}%`,
+                              height: '100%',
+                              background: remaining > 20 ? 'linear-gradient(90deg, #38bdf8, #4ade80)' : '#f87171',
+                              borderRadius: '3px',
+                              transition: 'width 0.3s ease',
+                            }}
+                          />
+                        </div>
+
+                        {resetTimeStr && (
+                          <div style={{ marginTop: '8px', fontSize: '11px', color: '#64748b' }}>
+                            {t('quotaResetAt')}: {resetTimeStr}
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 )

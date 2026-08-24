@@ -30,8 +30,12 @@ export const GOOGLE_OAUTH_SCOPES = [
   'https://www.googleapis.com/auth/experimentsandconfigs',
 ] as const
 
-export const ANTIGRAVITY_ENDPOINT_PRIMARY = 'https://cloudcode-pa.googleapis.com' as const
 export const ANTIGRAVITY_ENDPOINT_DAILY = 'https://daily-cloudcode-pa.googleapis.com' as const
+export const ANTIGRAVITY_ENDPOINT_PRIMARY = 'https://cloudcode-pa.googleapis.com' as const
+export const ANTIGRAVITY_ENDPOINTS = [
+  ANTIGRAVITY_ENDPOINT_DAILY,
+  ANTIGRAVITY_ENDPOINT_PRIMARY,
+] as const
 export const ANTIGRAVITY_API_VERSION = 'v1internal' as const
 export const ANTIGRAVITY_USER_AGENT = 'antigravity/hub/2.2.1 darwin/arm64' as const
 

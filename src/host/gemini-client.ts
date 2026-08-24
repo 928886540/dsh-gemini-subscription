@@ -1,8 +1,7 @@
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { AttachmentStore, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import {
-  ANTIGRAVITY_ENDPOINT_DAILY,
-  ANTIGRAVITY_ENDPOINT_PRIMARY,
+  ANTIGRAVITY_ENDPOINTS,
 } from '../compat.ts'
 import {
   mapGenerateOptionsToGeminiPayload,
@@ -81,7 +80,7 @@ export class GeminiClient implements ImageResolver {
     }
 
     let response: Response | null = null
-    const endpoints = [ANTIGRAVITY_ENDPOINT_PRIMARY, ANTIGRAVITY_ENDPOINT_DAILY]
+    const endpoints = ANTIGRAVITY_ENDPOINTS
 
     for (const ep of endpoints) {
       try {

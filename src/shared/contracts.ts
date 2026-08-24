@@ -31,6 +31,7 @@ export interface QuotaBucketDto {
   id: string
   name: string
   planType: string | null
+  creditAmount?: number | null
   primary: QuotaWindowDto | null
   secondary: QuotaWindowDto | null
   windows: QuotaWindowDto[]

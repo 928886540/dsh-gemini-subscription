@@ -1,7 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto'
 import {
-  ANTIGRAVITY_ENDPOINT_DAILY,
-  ANTIGRAVITY_ENDPOINT_PRIMARY,
+  ANTIGRAVITY_ENDPOINTS,
   ANTIGRAVITY_USER_AGENT,
   GOOGLE_OAUTH_AUTHORIZE_URL,
   GOOGLE_OAUTH_CLIENT_ID,
@@ -332,8 +331,7 @@ export class OAuthService {
   }
 
   private async fetchCodeAssistInfo(accessToken: string): Promise<CodeAssistLoadResponse | null> {
-    const endpoints = [ANTIGRAVITY_ENDPOINT_PRIMARY, ANTIGRAVITY_ENDPOINT_DAILY]
-    for (const base of endpoints) {
+    for (const base of ANTIGRAVITY_ENDPOINTS) {
       try {
         const res = await this.fetchFn(`${base}/v1internal:loadCodeAssist`, {
           method: 'POST',

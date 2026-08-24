@@ -1,11 +1,15 @@
 import { ReasoningEffortId, type LlmModelInfo, type LlmResolvedModelInfo } from '@deepseek-ai/dsh-llm'
 import {
-  ANTIGRAVITY_ENDPOINT_DAILY,
-  ANTIGRAVITY_ENDPOINT_PRIMARY,
+  ANTIGRAVITY_ENDPOINTS,
   ANTIGRAVITY_USER_AGENT,
   PROVIDER_ID,
 } from '../compat.ts'
 import type { GeminiContextWindowOverridesDto } from './contracts.ts'
+
+export interface ModelQuotaInfo {
+  remainingFraction: number
+  resetTime?: string
+}
 
 export interface GeminiModelCatalogEntry {
   id: string
@@ -19,6 +23,7 @@ export interface GeminiModelCatalogEntry {
   tools: boolean
   defaultThinkingBudget?: number
   upstreamModel: string
+  quotaInfo?: ModelQuotaInfo
 }
 
 export const GEMINI_MODEL_CATALOG: readonly GeminiModelCatalogEntry[] = [
@@ -176,15 +181,26 @@ export function resolveGeminiModel(
   }
 }
 
+export interface RawAvailableModelInfo {
+  displayName?: string
+  maxTokens?: number
+  maxOutputTokens?: number
+  remainingFraction?: number
+  resetTime?: string
+  quotaInfo?: {
+    remainingFraction?: number
+    resetTime?: string
+  }
+}
+
 export async function fetchDynamicAntigravityModels(
   accessToken: string,
   projectId?: string,
   fetchFn: typeof fetch = fetch,
 ): Promise<GeminiModelCatalogEntry[]> {
-  const endpoints = [ANTIGRAVITY_ENDPOINT_PRIMARY, ANTIGRAVITY_ENDPOINT_DAILY]
   const payload = projectId ? { project: projectId } : {}
 
-  for (const base of endpoints) {
+  for (const base of ANTIGRAVITY_ENDPOINTS) {
     try {
       const res = await fetchFn(`${base}/v1internal:fetchAvailableModels`, {
         method: 'POST',
@@ -198,7 +214,7 @@ export async function fetchDynamicAntigravityModels(
       })
 
       if (!res.ok) continue
-      const data = await res.json() as { models?: Record<string, { displayName?: string; maxTokens?: number; maxOutputTokens?: number }> }
+      const data = await res.json() as { models?: Record<string, RawAvailableModelInfo> }
       if (!data || typeof data.models !== 'object') continue
 
       const models: GeminiModelCatalogEntry[] = []
@@ -215,6 +231,23 @@ export async function fetchDynamicAntigravityModels(
         const maxContext = info.maxTokens || known?.maxContextWindow || 1_048_576
         const maxOut = info.maxOutputTokens || known?.maxOutputTokens || 65_536
 
+        // Extract remainingFraction and resetTime from quotaInfo or direct properties
+        let quotaInfo: ModelQuotaInfo | undefined
+        const rawRemaining = typeof info.quotaInfo?.remainingFraction === 'number'
+          ? info.quotaInfo.remainingFraction
+          : typeof info.remainingFraction === 'number'
+            ? info.remainingFraction
+            : undefined
+
+        const rawResetTime = info.quotaInfo?.resetTime || info.resetTime
+
+        if (typeof rawRemaining === 'number' && Number.isFinite(rawRemaining)) {
+          quotaInfo = {
+            remainingFraction: Math.max(0, Math.min(1, rawRemaining)),
+            resetTime: rawResetTime,
+          }
+        }
+
         models.push({
           id,
           name: displayName,
@@ -227,6 +260,7 @@ export async function fetchDynamicAntigravityModels(
           tools: known ? known.tools : true,
           defaultThinkingBudget: known?.defaultThinkingBudget ?? 4096,
           upstreamModel: id,
+          quotaInfo,
         })
       }
 
