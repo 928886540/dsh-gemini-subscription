@@ -301,13 +301,15 @@ export class OAuthService {
     })
 
     if (!response.ok) {
-      await this.store.clear().catch(() => undefined)
       const errText = await response.text().catch(() => '')
+      if (errText.includes('invalid_grant')) {
+        await this.store.clear().catch(() => undefined)
+      }
       throw new OAuthServiceError('token-refresh-failed', `Google token refresh failed (${response.status}): ${errText}`)
     }
 
     const tokens = await response.json() as GoogleTokenResponse
-    const refreshed = credentialsFromTokenResponse(tokens, this.now())
+    const refreshed = credentialsFromTokenResponse(tokens, this.now(), stored.refreshToken)
     const merged: StoredOAuthCredentials = {
       ...stored,
       ...refreshed,
@@ -469,11 +471,19 @@ export function buildAuthorizationUrl(verifier: string, state: string, redirectU
   return `${GOOGLE_OAUTH_AUTHORIZE_URL}?${params.toString()}`
 }
 
-function credentialsFromTokenResponse(tokens: GoogleTokenResponse, now: number): StoredOAuthCredentials {
+function credentialsFromTokenResponse(
+  tokens: GoogleTokenResponse,
+  now: number,
+  fallbackRefreshToken?: string,
+): StoredOAuthCredentials {
   if (typeof tokens.access_token !== 'string' || tokens.access_token === '') {
     throw new OAuthServiceError('oauth-failed', 'Google token response omitted access_token.')
   }
-  if (typeof tokens.refresh_token !== 'string' || tokens.refresh_token === '') {
+  const refreshToken = (typeof tokens.refresh_token === 'string' && tokens.refresh_token !== '')
+    ? tokens.refresh_token
+    : fallbackRefreshToken
+
+  if (!refreshToken) {
     throw new OAuthServiceError('oauth-failed', 'Google token response omitted refresh_token.')
   }
   const expiresInSeconds = typeof tokens.expires_in === 'number' && Number.isFinite(tokens.expires_in)
@@ -502,7 +512,7 @@ function credentialsFromTokenResponse(tokens: GoogleTokenResponse, now: number):
 
   return {
     accessToken: tokens.access_token,
-    refreshToken: tokens.refresh_token,
+    refreshToken,
     idToken,
     expiresAt,
     email,

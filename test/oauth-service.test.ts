@@ -37,6 +37,28 @@ describe('OAuth Service', () => {
     expect(status.login.active).toBe(false)
   })
 
+  it('handles token refresh silently when Google response omits refresh_token', async () => {
+    const store = new MemoryTokenStore()
+    await store.save({
+      accessToken: 'old-access',
+      refreshToken: 'my-stored-refresh-token',
+      expiresAt: Date.now() - 1000,
+    })
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        access_token: 'new-access-token',
+        expires_in: 3600,
+      }),
+    })
+
+    const oauth = new OAuthService(store, { fetchFn: fetchMock as unknown as typeof fetch })
+    const creds = await oauth.credentials()
+    expect(creds.accessToken).toBe('new-access-token')
+    expect(creds.refreshToken).toBe('my-stored-refresh-token')
+  })
+
   it('handles token refresh silently and updates storage', async () => {
     const store = new MemoryTokenStore()
     await store.save({
