@@ -88,6 +88,21 @@ export function GeminiComposerQuota({ api, directory, loadModelDirectory, t }: P
   // 提取各 Bucket 详细限额信息（如 5小时、周限额等）
   const quotaGroups = status?.quota.quotaGroups ?? []
 
+  // 拼接悬浮原生提示词 (tooltip)：展示各窗口剩余与刷新时间
+  const hoverTooltip = useMemo(() => {
+    if (!quotaGroups || quotaGroups.length === 0) return 'AGY 订阅配额'
+    const items: string[] = []
+    for (const group of quotaGroups) {
+      for (const b of group.buckets) {
+        const label = formatWindowLabel(b)
+        const percent = formatPercent(b.remainingPercent)
+        const resetStr = formatRelativeReset(b.resetsAt)
+        items.push(`${label}: ${percent}${resetStr ? ` (${resetStr})` : ''}`)
+      }
+    }
+    return `✨ AGY 配额详情:\n${items.join('\n')}`
+  }, [quotaGroups])
+
   return (
     <span
       ref={containerRef}
@@ -98,6 +113,7 @@ export function GeminiComposerQuota({ api, directory, loadModelDirectory, t }: P
         type="button"
         className="dsh-gemini-composer-quota"
         data-level={level}
+        title={hoverTooltip}
         onClick={() => setPopoverOpen((prev) => !prev)}
         aria-label={quota === null ? t('quickQuotaLoading') : `${t('quickQuotaLabel')}: ${formatPercent(quota.remainingPercent)}`}
       >
