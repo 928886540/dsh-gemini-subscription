@@ -34,6 +34,10 @@ export class GeminiSubscriptionApi {
     return post(`${ROUTE_PREFIX}/quota/refresh`, {})
   }
 
+  getQuota(_force = false): Promise<QuotaStatusDto> {
+    return post<QuotaStatusDto>(`${ROUTE_PREFIX}/quota/refresh`, {})
+  }
+
   testConnection(): Promise<{ ok: boolean; latencyMs: number; error?: string }> {
     return post(`${ROUTE_PREFIX}/connection/test`, {})
   }

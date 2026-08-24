@@ -21,6 +21,8 @@ export interface CredentialStorageDto {
 
 export interface QuotaWindowDto {
   usedPercent: number
+  remainingPercent?: number
+  remainingFraction?: number
   windowDurationMins: number | null
   resetsAt: number | null
 }
@@ -58,15 +60,22 @@ export interface PublicErrorDto {
 export interface GeminiContextWindowOverridesDto {
   'gemini-2.5-pro': number
   'gemini-2.5-flash': number
+  'gemini-2.5-flash-lite': number
   'gemini-3.7-flash': number
+  'gemini-3.7-flash-thinking': number
+  'gemini-3.1-pro': number
 }
 
 export interface SubscriptionPreferencesDto {
   quickQuotaVisible: boolean
+  searchProvider?: string
+  subagentEnabled: boolean
   subagentProvider: string
   subagentModel: string
   subagentReasoningEffort: string | null
   subagentContextWindow: number
+  subagentMaxDepth: number
+  subagentMaxAgents: number
   contextWindowOverrides: GeminiContextWindowOverridesDto
   defaultThinkingBudget: number
   writable: boolean
@@ -74,10 +83,14 @@ export interface SubscriptionPreferencesDto {
 
 export interface SubscriptionPreferencesUpdateDto {
   quickQuotaVisible?: boolean
+  searchProvider?: string
+  subagentEnabled?: boolean
   subagentProvider?: string
   subagentModel?: string
   subagentReasoningEffort?: string | null
   subagentContextWindow?: number
+  subagentMaxDepth?: number
+  subagentMaxAgents?: number
   contextWindowOverrides?: Partial<GeminiContextWindowOverridesDto>
   defaultThinkingBudget?: number
 }

@@ -1,8 +1,8 @@
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { AttachmentStore, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import {
-  CODE_ASSIST_ENDPOINT_DAILY,
-  CODE_ASSIST_ENDPOINT_PRIMARY,
+  ANTIGRAVITY_ENDPOINT_DAILY,
+  ANTIGRAVITY_ENDPOINT_PRIMARY,
 } from '../compat.ts'
 import {
   mapGenerateOptionsToGeminiPayload,
@@ -68,7 +68,7 @@ export class GeminiClient implements ImageResolver {
     let retriedAuth = false
 
     const sendRequest = async (tokenCreds: typeof credentials, endpointBase: string): Promise<Response> => {
-      const url = `${endpointBase}:streamGenerateContent?alt=sse`
+      const url = `${endpointBase}/v1internal:streamGenerateContent?alt=sse`
       return await this.fetchFn(url, {
         method: 'POST',
         headers: {
@@ -81,7 +81,7 @@ export class GeminiClient implements ImageResolver {
     }
 
     let response: Response | null = null
-    const endpoints = [CODE_ASSIST_ENDPOINT_PRIMARY, CODE_ASSIST_ENDPOINT_DAILY]
+    const endpoints = [ANTIGRAVITY_ENDPOINT_PRIMARY, ANTIGRAVITY_ENDPOINT_DAILY]
 
     for (const ep of endpoints) {
       try {

@@ -233,12 +233,16 @@ function field(body: Record<string, unknown>, key: string): string | null {
 function readPreferencesUpdate(body: Record<string, unknown>): SubscriptionPreferencesUpdateDto {
   const update: SubscriptionPreferencesUpdateDto = {}
   if (typeof body.quickQuotaVisible === 'boolean') update.quickQuotaVisible = body.quickQuotaVisible
+  if (typeof body.searchProvider === 'string' || body.searchProvider === undefined) update.searchProvider = body.searchProvider
+  if (typeof body.subagentEnabled === 'boolean') update.subagentEnabled = body.subagentEnabled
   if (typeof body.subagentProvider === 'string') update.subagentProvider = body.subagentProvider
   if (typeof body.subagentModel === 'string') update.subagentModel = body.subagentModel
   if (typeof body.subagentReasoningEffort === 'string' || body.subagentReasoningEffort === null) {
     update.subagentReasoningEffort = body.subagentReasoningEffort
   }
   if (typeof body.subagentContextWindow === 'number') update.subagentContextWindow = body.subagentContextWindow
+  if (typeof body.subagentMaxDepth === 'number') update.subagentMaxDepth = body.subagentMaxDepth
+  if (typeof body.subagentMaxAgents === 'number') update.subagentMaxAgents = body.subagentMaxAgents
   if (typeof body.defaultThinkingBudget === 'number') update.defaultThinkingBudget = body.defaultThinkingBudget
   if (typeof body.contextWindowOverrides === 'object' && body.contextWindowOverrides !== null) {
     update.contextWindowOverrides = body.contextWindowOverrides as SubscriptionPreferencesUpdateDto['contextWindowOverrides']

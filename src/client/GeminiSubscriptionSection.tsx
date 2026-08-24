@@ -261,6 +261,87 @@ export function GeminiSubscriptionSection({ t }: Props): React.JSX.Element {
         )}
       </div>
 
+      {isAuthenticated && (
+        <div className="dsh-gemini-card">
+          <div className="dsh-gemini-card-header">
+            <h3 className="dsh-gemini-title">
+              <span>📊</span> {t('quotaTitle')}
+            </h3>
+            <button
+              className="dsh-gemini-btn dsh-gemini-btn-secondary"
+              onClick={async () => {
+                setBusy('quota')
+                try {
+                  const updated = await apiRef.current.getQuota(true)
+                  if (status) setStatus({ ...status, quota: updated })
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : String(err))
+                } finally {
+                  setBusy(null)
+                }
+              }}
+              disabled={busy === 'quota'}
+            >
+              {busy === 'quota' ? t('refreshing') : t('refreshQuota')}
+            </button>
+          </div>
+          <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: '#94a3b8' }}>
+            {t('quotaIntro')}
+          </p>
+
+          {status?.quota?.buckets && status.quota.buckets.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {status.quota.buckets.map((bucket) => {
+                const primary = bucket.primary
+                const remaining = typeof primary?.remainingPercent === 'number'
+                  ? primary.remainingPercent
+                  : Math.max(0, 100 - (primary?.usedPercent ?? 0))
+                const used = primary?.usedPercent ?? 0
+                const resetTimeStr = primary?.resetsAt ? new Date(primary.resetsAt).toLocaleString() : null
+
+                return (
+                  <div key={bucket.id} style={{ padding: '12px 14px', background: 'rgba(255, 255, 255, 0.03)', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ fontWeight: 600, fontSize: '14px', color: '#f1f5f9' }}>{bucket.name}</span>
+                      <span style={{ fontSize: '12px', color: '#38bdf8', background: 'rgba(56, 189, 248, 0.12)', padding: '2px 8px', borderRadius: '4px' }}>
+                        {bucket.planType || status.quota?.tierDisplayName || 'Free Tier'}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>
+                      <span>{t('quotaRemaining')}: <strong style={{ color: remaining > 20 ? '#4ade80' : '#f87171' }}>{remaining}%</strong></span>
+                      <span>{t('quotaUsed')}: {used}%</span>
+                    </div>
+
+                    <div style={{ width: '100%', height: '6px', background: 'rgba(255, 255, 255, 0.1)', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div
+                        style={{
+                          width: `${remaining}%`,
+                          height: '100%',
+                          background: remaining > 20 ? 'linear-gradient(90deg, #38bdf8, #4ade80)' : '#f87171',
+                          borderRadius: '3px',
+                          transition: 'width 0.3s ease',
+                        }}
+                      />
+                    </div>
+
+                    {resetTimeStr && (
+                      <div style={{ marginTop: '8px', fontSize: '11px', color: '#64748b' }}>
+                        {t('quotaResetAt')}: {resetTimeStr}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div style={{ padding: '12px 14px', background: 'rgba(255, 255, 255, 0.02)', borderRadius: '8px', color: '#64748b', fontSize: '13px' }}>
+              {t('quotaUnavailable')}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="dsh-gemini-card">
         <h3 className="dsh-gemini-title" style={{ marginBottom: '12px' }}>
           <span>🚀</span> {t('models')}

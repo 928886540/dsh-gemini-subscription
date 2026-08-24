@@ -26,7 +26,7 @@ export function apply(ctx: Context): void {
     logger: ctx.logger,
     onGenerationFinished: () => usage.invalidate(),
   })
-  const adapter = new GeminiSubscriptionAdapter(client, preferences)
+  const adapter = new GeminiSubscriptionAdapter(client, preferences, oauth)
 
   ctx.effect(() => {
     const disposeRoutes = registerRoutes(ctx, oauth, usage, preferences)

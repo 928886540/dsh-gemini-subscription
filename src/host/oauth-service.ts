@@ -1,7 +1,8 @@
 import { createHash, randomBytes } from 'node:crypto'
 import {
-  CODE_ASSIST_ENDPOINT_DAILY,
-  CODE_ASSIST_ENDPOINT_PRIMARY,
+  ANTIGRAVITY_ENDPOINT_DAILY,
+  ANTIGRAVITY_ENDPOINT_PRIMARY,
+  ANTIGRAVITY_USER_AGENT,
   GOOGLE_OAUTH_AUTHORIZE_URL,
   GOOGLE_OAUTH_CLIENT_ID,
   GOOGLE_OAUTH_CLIENT_SECRET,
@@ -316,7 +317,10 @@ export class OAuthService {
 
   private async fetchUserProfile(accessToken: string): Promise<{ email?: string; name?: string; picture?: string } | null> {
     const res = await this.fetchFn(GOOGLE_USERINFO_URL, {
-      headers: { authorization: `Bearer ${accessToken}` },
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        'user-agent': ANTIGRAVITY_USER_AGENT,
+      },
     })
     if (!res.ok) return null
     const info = await res.json() as GoogleUserInfo
@@ -328,17 +332,22 @@ export class OAuthService {
   }
 
   private async fetchCodeAssistInfo(accessToken: string): Promise<CodeAssistLoadResponse | null> {
-    const endpoints = [CODE_ASSIST_ENDPOINT_PRIMARY, CODE_ASSIST_ENDPOINT_DAILY]
+    const endpoints = [ANTIGRAVITY_ENDPOINT_PRIMARY, ANTIGRAVITY_ENDPOINT_DAILY]
     for (const base of endpoints) {
       try {
-        const res = await this.fetchFn(`${base}:loadCodeAssist`, {
+        const res = await this.fetchFn(`${base}/v1internal:loadCodeAssist`, {
           method: 'POST',
           headers: {
             authorization: `Bearer ${accessToken}`,
             'content-type': 'application/json',
-            'user-agent': 'Antigravity/1.0.0',
+            'user-agent': ANTIGRAVITY_USER_AGENT,
+            'x-goog-api-client': 'gl-node/22.21.1',
           },
-          body: JSON.stringify({}),
+          body: JSON.stringify({
+            metadata: {
+              ideType: 'ANTIGRAVITY',
+            },
+          }),
         })
         if (res.ok) {
           return await res.json() as CodeAssistLoadResponse

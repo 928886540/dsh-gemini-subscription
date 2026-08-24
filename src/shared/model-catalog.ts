@@ -1,5 +1,10 @@
 import { ReasoningEffortId, type LlmModelInfo, type LlmResolvedModelInfo } from '@deepseek-ai/dsh-llm'
-import { PROVIDER_ID } from '../compat.ts'
+import {
+  ANTIGRAVITY_ENDPOINT_DAILY,
+  ANTIGRAVITY_ENDPOINT_PRIMARY,
+  ANTIGRAVITY_USER_AGENT,
+  PROVIDER_ID,
+} from '../compat.ts'
 import type { GeminiContextWindowOverridesDto } from './contracts.ts'
 
 export interface GeminiModelCatalogEntry {
@@ -44,6 +49,19 @@ export const GEMINI_MODEL_CATALOG: readonly GeminiModelCatalogEntry[] = [
     upstreamModel: 'gemini-2.5-flash',
   },
   {
+    id: 'gemini-2.5-flash-lite',
+    name: 'Gemini 2.5 Flash-Lite',
+    description: 'Extremely fast and cost-effective model optimized for high-volume quick tasks.',
+    contextWindow: 1_048_576,
+    maxContextWindow: 1_048_576,
+    maxOutputTokens: 65_536,
+    reasoning: true,
+    vision: true,
+    tools: true,
+    defaultThinkingBudget: 1024,
+    upstreamModel: 'gemini-2.5-flash-lite',
+  },
+  {
     id: 'gemini-3.7-flash',
     name: 'Gemini 3.7 Flash',
     description: 'Next-gen hybrid reasoning model balancing speed and depth.',
@@ -86,8 +104,21 @@ export const GEMINI_MODEL_CATALOG: readonly GeminiModelCatalogEntry[] = [
 
 export const DEFAULT_GEMINI_MODEL_ID = 'gemini-2.5-pro'
 
+let dynamicModelCatalog: GeminiModelCatalogEntry[] | null = null
+
+export function setDynamicModelCatalog(models: GeminiModelCatalogEntry[] | null): void {
+  dynamicModelCatalog = models
+}
+
+export function getEffectiveModelCatalog(): readonly GeminiModelCatalogEntry[] {
+  return dynamicModelCatalog && dynamicModelCatalog.length > 0
+    ? dynamicModelCatalog
+    : GEMINI_MODEL_CATALOG
+}
+
 export function listGeminiModels(): readonly LlmModelInfo[] {
-  return GEMINI_MODEL_CATALOG.map((entry) => ({
+  const catalog = getEffectiveModelCatalog()
+  return catalog.map((entry) => ({
     provider: PROVIDER_ID,
     id: entry.id,
     name: entry.name,
@@ -97,7 +128,8 @@ export function listGeminiModels(): readonly LlmModelInfo[] {
 }
 
 export function resolveGeminiCatalogEntry(modelId: string): GeminiModelCatalogEntry {
-  const matched = GEMINI_MODEL_CATALOG.find((entry) => entry.id === modelId || entry.upstreamModel === modelId)
+  const catalog = getEffectiveModelCatalog()
+  const matched = catalog.find((entry) => entry.id === modelId || entry.upstreamModel === modelId)
   if (matched !== undefined) return matched
 
   // Fallback dynamic entry for unlisted Gemini model identifiers
@@ -142,4 +174,70 @@ export function resolveGeminiModel(
       defaultEffort: ReasoningEffortId('medium'),
     } : undefined,
   }
+}
+
+export async function fetchDynamicAntigravityModels(
+  accessToken: string,
+  projectId?: string,
+  fetchFn: typeof fetch = fetch,
+): Promise<GeminiModelCatalogEntry[]> {
+  const endpoints = [ANTIGRAVITY_ENDPOINT_PRIMARY, ANTIGRAVITY_ENDPOINT_DAILY]
+  const payload = projectId ? { project: projectId } : {}
+
+  for (const base of endpoints) {
+    try {
+      const res = await fetchFn(`${base}/v1internal:fetchAvailableModels`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${accessToken}`,
+          'content-type': 'application/json',
+          'user-agent': ANTIGRAVITY_USER_AGENT,
+          'x-goog-api-client': 'gl-node/22.21.1',
+        },
+        body: JSON.stringify(payload),
+      })
+
+      if (!res.ok) continue
+      const data = await res.json() as { models?: Record<string, { displayName?: string; maxTokens?: number; maxOutputTokens?: number }> }
+      if (!data || typeof data.models !== 'object') continue
+
+      const models: GeminiModelCatalogEntry[] = []
+      for (const [rawId, info] of Object.entries(data.models)) {
+        const id = rawId.trim()
+        if (!id) continue
+        // Filter out internal and preview tab completion models (matches CPA)
+        if (['chat_20706', 'chat_23310', 'tab_flash_lite_preview', 'tab_jump_flash_lite_preview'].includes(id)) {
+          continue
+        }
+
+        const known = GEMINI_MODEL_CATALOG.find(k => k.id === id || k.upstreamModel === id)
+        const displayName = info.displayName || known?.name || id
+        const maxContext = info.maxTokens || known?.maxContextWindow || 1_048_576
+        const maxOut = info.maxOutputTokens || known?.maxOutputTokens || 65_536
+
+        models.push({
+          id,
+          name: displayName,
+          description: known?.description || `${displayName} from Google Antigravity`,
+          contextWindow: known?.contextWindow || Math.min(maxContext, 1_048_576),
+          maxContextWindow: maxContext,
+          maxOutputTokens: maxOut,
+          reasoning: known ? known.reasoning : true,
+          vision: known ? known.vision : true,
+          tools: known ? known.tools : true,
+          defaultThinkingBudget: known?.defaultThinkingBudget ?? 4096,
+          upstreamModel: id,
+        })
+      }
+
+      if (models.length > 0) {
+        setDynamicModelCatalog(models)
+        return models
+      }
+    } catch {
+      // try next endpoint
+    }
+  }
+
+  return [...GEMINI_MODEL_CATALOG]
 }

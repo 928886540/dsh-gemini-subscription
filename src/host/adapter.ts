@@ -9,9 +9,14 @@ import {
   type ResolvedRetryPolicy,
   type StreamChunk,
 } from '@deepseek-ai/dsh-llm'
+import {
+  fetchDynamicAntigravityModels,
+  listGeminiModels,
+  resolveGeminiModel,
+} from '../shared/model-catalog.ts'
 import { PROVIDER_ID, PROVIDER_NAME } from '../compat.ts'
-import { listGeminiModels, resolveGeminiModel } from '../shared/model-catalog.ts'
 import type { GeminiClient } from './gemini-client.ts'
+import type { OAuthService } from './oauth-service.ts'
 import type { SubscriptionPreferenceStore } from './preferences.ts'
 
 const RETRY_POLICY = resolveRetryPolicy({
@@ -25,6 +30,7 @@ export class GeminiSubscriptionAdapter extends LlmAdapter {
   constructor(
     private readonly client: GeminiClient,
     private readonly preferences?: SubscriptionPreferenceStore,
+    private readonly oauth?: OAuthService,
   ) {
     super()
   }
@@ -38,6 +44,14 @@ export class GeminiSubscriptionAdapter extends LlmAdapter {
   }
 
   async listModels(): Promise<readonly LlmModelInfo[]> {
+    if (this.oauth) {
+      try {
+        const creds = await this.oauth.credentials()
+        await fetchDynamicAntigravityModels(creds.accessToken, creds.projectId)
+      } catch {
+        // Fallback to static/cached catalog
+      }
+    }
     return listGeminiModels()
   }
 
