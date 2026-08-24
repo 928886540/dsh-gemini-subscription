@@ -1,5 +1,5 @@
 {
-  "name": "@dickpy/dsh-gemini-subscription",
+  "name": "dsh-gemini-subscription",
   "version": "0.1.0",
   "description": "DSH provider plugin for Gemini & Antigravity access through a Google Gemini subscription.",
   "type": "module",
