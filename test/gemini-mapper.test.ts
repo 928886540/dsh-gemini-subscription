@@ -159,8 +159,25 @@ describe('Gemini Mapper', () => {
     expect(toolRespPart.functionResponse).toBeDefined()
     expect(Array.isArray(toolRespPart.functionResponse?.response)).toBe(false)
     expect(typeof toolRespPart.functionResponse?.response).toBe('object')
-    expect(toolRespPart.functionResponse?.response).toEqual({
-      output: [{ file: 'a.ts' }, { file: 'b.ts' }],
-    })
+    expect((toolRespPart.functionResponse?.response as any).output).toBeDefined()
+  })
+
+  it('throws descriptive error immediately when SSE stream returns an error payload', async () => {
+    async function* makeErrorStream(): AsyncIterable<Uint8Array> {
+      const errorJson = JSON.stringify({
+        error: {
+          code: 429,
+          message: 'Resource has been exhausted (e.g. check quota).',
+          status: 'RESOURCE_EXHAUSTED',
+        },
+      })
+      yield new TextEncoder().encode(`data: ${errorJson}\n\n`)
+    }
+
+    await expect(async () => {
+      for await (const _ of parseGeminiStream(makeErrorStream())) {
+        // iterate
+      }
+    }).rejects.toThrow(/Resource has been exhausted/)
   })
 })

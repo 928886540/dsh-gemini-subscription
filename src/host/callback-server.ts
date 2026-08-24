@@ -196,14 +196,37 @@ function writeHtml(response: ServerResponse, status: number, message: string): P
       line-height: 1.6;
       margin: 0;
     }
+    .hint {
+      font-size: 13px;
+      color: #38bdf8;
+      margin-top: 14px;
+    }
   </style>
 </head>
 <body>
   <div class="card">
     <div class="icon">${isSuccess ? '✨' : '⚠️'}</div>
-    <h1>${isSuccess ? 'Google Gemini Sign-In Successful' : 'Sign-In Incomplete'}</h1>
+    <h1>${isSuccess ? 'Google Gemini 授权成功' : '授权未完成'}</h1>
     <p>${escaped}</p>
+    ${isSuccess ? '<p class="hint">页面将在 <strong id="countdown">3</strong> 秒后自动关闭，并返回 DeepSeek Harness…</p>' : ''}
   </div>
+  ${isSuccess ? `
+  <script>
+    let remaining = 3;
+    const el = document.getElementById('countdown');
+    const interval = setInterval(function() {
+      remaining--;
+      if (el) el.textContent = remaining;
+      if (remaining <= 0) {
+        clearInterval(interval);
+        try { window.close(); } catch(e) {}
+      }
+    }, 1000);
+    setTimeout(function() {
+      try { window.close(); } catch(e) {}
+    }, 3000);
+  </script>
+  ` : ''}
 </body>
 </html>`)
   })

@@ -328,11 +328,19 @@ export async function* parseGeminiStream(
         return
       }
 
-      let payload: GeminiSseResponsePayload
+      let payload: GeminiSseResponsePayload & {
+        error?: { code?: number; message?: string; status?: string }
+      }
       try {
         payload = JSON.parse(rawJson)
       } catch {
         continue
+      }
+
+      if (payload.error) {
+        const code = payload.error.code ? ` (${payload.error.code})` : ''
+        const msg = payload.error.message || payload.error.status || JSON.stringify(payload.error)
+        throw new Error(`Gemini Code Assist streaming error${code}: ${msg}`)
       }
 
       const responseObj = payload.response ?? payload
