@@ -1,0 +1,4 @@
+# Add Gemini subscription dual-face plugin row to the DSH web profile.
+- insert:
+    - id: dsh-gemini-subscription
+      name: 'dsh-gemini-subscription'

@@ -1,0 +1,62 @@
+import type { CredentialStorageDto } from '../shared/contracts.ts'
+
+export interface StoredOAuthCredentials {
+  accessToken: string
+  refreshToken: string
+  idToken?: string
+  expiresAt: number
+  email?: string
+  name?: string
+  picture?: string
+  planType?: string
+  projectId?: string
+}
+
+export interface TokenStore {
+  readonly storage: Omit<CredentialStorageDto, 'available'>
+  load(): Promise<StoredOAuthCredentials | null>
+  save(value: StoredOAuthCredentials): Promise<void>
+  clear(): Promise<void>
+}
+
+export class MemoryTokenStore implements TokenStore {
+  readonly storage = { kind: 'memory', encrypted: false } as const
+  private value: StoredOAuthCredentials | null = null
+
+  async load(): Promise<StoredOAuthCredentials | null> {
+    return this.value === null ? null : structuredClone(this.value)
+  }
+
+  async save(value: StoredOAuthCredentials): Promise<void> {
+    this.value = structuredClone(value)
+  }
+
+  async clear(): Promise<void> {
+    this.value = null
+  }
+}
+
+export function parseStoredCredentials(value: unknown): StoredOAuthCredentials {
+  if (typeof value !== 'object' || value === null) throw new Error('credential bundle is not an object')
+  const record = value as Record<string, unknown>
+  if (typeof record.accessToken !== 'string' || record.accessToken === '') throw new Error('access token is missing')
+  if (typeof record.refreshToken !== 'string' || record.refreshToken === '') throw new Error('refresh token is missing')
+  if (typeof record.expiresAt !== 'number' || !Number.isFinite(record.expiresAt)) throw new Error('expiry is invalid')
+  const optional = (key: string): string | undefined => {
+    const candidate = record[key]
+    if (candidate === undefined || candidate === null) return undefined
+    if (typeof candidate !== 'string') throw new Error(`${key} is invalid`)
+    return candidate
+  }
+  return {
+    accessToken: record.accessToken,
+    refreshToken: record.refreshToken,
+    expiresAt: record.expiresAt,
+    idToken: optional('idToken'),
+    email: optional('email'),
+    name: optional('name'),
+    picture: optional('picture'),
+    planType: optional('planType'),
+    projectId: optional('projectId'),
+  }
+}
