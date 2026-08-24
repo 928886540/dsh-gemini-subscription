@@ -41,8 +41,7 @@ export function GeminiSubscriptionSection({ t }: Props): React.JSX.Element {
     const es = apiRef.current.events(loginId)
     eventSourceRef.current = es
 
-    es.onmessage = (ev) => {
-      const parsed = parseLoginEvent(ev)
+    const handleEvent = (parsed: ReturnType<typeof parseLoginEvent>) => {
       if (!parsed) return
       if (parsed.type === 'completed') {
         closeEvents()
@@ -59,6 +58,22 @@ export function GeminiSubscriptionSection({ t }: Props): React.JSX.Element {
         setAuthUrl(null)
       }
     }
+
+    es.onmessage = (ev) => {
+      handleEvent(parseLoginEvent(ev))
+    }
+
+    es.addEventListener('completed', (ev) => {
+      handleEvent(parseLoginEvent(ev as MessageEvent<string>))
+    })
+
+    es.addEventListener('failed', (ev) => {
+      handleEvent(parseLoginEvent(ev as MessageEvent<string>))
+    })
+
+    es.addEventListener('cancelled', (ev) => {
+      handleEvent(parseLoginEvent(ev as MessageEvent<string>))
+    })
 
     es.onerror = () => {
       closeEvents()
@@ -77,6 +92,27 @@ export function GeminiSubscriptionSection({ t }: Props): React.JSX.Element {
       watchLogin(loginId)
     }
   }, [status?.login.active, status?.login.loginId, watchLogin])
+
+  // Fallback polling and focus sync while login is active
+  useEffect(() => {
+    if (!status?.login.active) return
+    const interval = setInterval(() => {
+      void load(true)
+    }, 2000)
+    return () => clearInterval(interval)
+  }, [status?.login.active, load])
+
+  useEffect(() => {
+    const onFocus = (): void => {
+      void load(true)
+    }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onFocus)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onFocus)
+    }
+  }, [load])
 
   const startLogin = async (): Promise<void> => {
     setBusy('login')

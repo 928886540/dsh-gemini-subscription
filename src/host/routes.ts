@@ -140,6 +140,7 @@ export function registerRoutes(
     }
 
     const send = (event: LoginEventDto): void => {
+      response.write(`data: ${JSON.stringify(event)}\n\n`)
       response.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
       if (event.type !== 'started') {
         terminal = true

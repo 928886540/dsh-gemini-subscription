@@ -148,7 +148,7 @@ export class OAuthService {
     timeout.unref?.()
 
     this.activeLogin = { id: loginId, expiresAt, server, timeout }
-    this.publish({ type: 'started', loginId, expiresAt })
+    this.publish(loginId, { type: 'started', loginId, expiresAt })
 
     void server.completion.then(() => {
       this.completeLogin(loginId)
@@ -168,15 +168,27 @@ export class OAuthService {
   }
 
   subscribe(loginId: string, listener: LoginListener): (() => void) | null {
-    const current = this.loginEvents.get(loginId)
-    if (current === undefined) return null
+    if (this.activeLogin?.id !== loginId && !this.loginEvents.has(loginId)) {
+      return null
+    }
     let set = this.listeners.get(loginId)
     if (set === undefined) {
       set = new Set()
       this.listeners.set(loginId, set)
     }
     set.add(listener)
-    listener(current)
+
+    const lastEvent = this.loginEvents.get(loginId)
+    if (lastEvent !== undefined) {
+      queueMicrotask(() => {
+        try {
+          listener(lastEvent)
+        } catch {
+          // ignore
+        }
+      })
+    }
+
     return () => {
       set?.delete(listener)
       if (set?.size === 0) this.listeners.delete(loginId)
@@ -252,9 +264,9 @@ export class OAuthService {
 
     const finalCredentials: StoredOAuthCredentials = {
       ...rawCredentials,
-      email: profile?.email ?? rawCredentials.email,
-      name: profile?.name ?? rawCredentials.name,
-      picture: profile?.picture ?? rawCredentials.picture,
+      email: (profile?.email && typeof profile.email === 'string') ? profile.email : rawCredentials.email,
+      name: (profile?.name && typeof profile.name === 'string') ? profile.name : rawCredentials.name,
+      picture: (profile?.picture && typeof profile.picture === 'string') ? profile.picture : rawCredentials.picture,
       planType: codeAssist?.paidTier?.name ?? codeAssist?.currentTier?.name ?? 'Free Tier',
       projectId: codeAssist?.cloudaicompanionProject ?? rawCredentials.projectId ?? 'default-cli-project',
     }
@@ -289,29 +301,30 @@ export class OAuthService {
     })
 
     if (!response.ok) {
-      if (response.status === 400 || response.status === 401) {
-        await this.store.clear().catch(() => {
-          throw new OAuthServiceError('storage-failed', 'Expired Google credentials could not be deleted securely.')
-        })
-      }
-      throw new OAuthServiceError('token-refresh-failed', `Google token refresh failed (${response.status}).`)
+      await this.store.clear().catch(() => undefined)
+      const errText = await response.text().catch(() => '')
+      throw new OAuthServiceError('token-refresh-failed', `Google token refresh failed (${response.status}): ${errText}`)
     }
 
     const tokens = await response.json() as GoogleTokenResponse
-    const updated: StoredOAuthCredentials = {
+    const refreshed = credentialsFromTokenResponse(tokens, this.now())
+    const merged: StoredOAuthCredentials = {
       ...stored,
-      accessToken: typeof tokens.access_token === 'string' ? tokens.access_token : stored.accessToken,
-      refreshToken: typeof tokens.refresh_token === 'string' ? tokens.refresh_token : stored.refreshToken,
-      idToken: typeof tokens.id_token === 'string' ? tokens.id_token : stored.idToken,
-      expiresAt: typeof tokens.expires_in === 'number' ? this.now() + tokens.expires_in * 1000 : stored.expiresAt,
+      ...refreshed,
+      refreshToken: refreshed.refreshToken || stored.refreshToken,
+      email: stored.email ?? refreshed.email,
+      name: stored.name ?? refreshed.name,
+      picture: stored.picture ?? refreshed.picture,
+      planType: stored.planType,
+      projectId: stored.projectId,
     }
 
-    await this.store.save(updated).catch(() => {
-      throw new OAuthServiceError('storage-failed', 'Refreshed Google credentials could not be saved securely.')
+    await this.store.save(merged).catch(() => {
+      throw new OAuthServiceError('storage-failed', 'Refreshed Google credentials could not be saved.')
     })
 
-    this.logger.info('[dsh-gemini-subscription] OAuth credentials refreshed')
-    return updated
+    this.logger.info?.('[dsh-gemini-subscription] OAuth credentials refreshed')
+    return merged
   }
 
   private async fetchUserProfile(accessToken: string): Promise<{ email?: string; name?: string; picture?: string } | null> {
@@ -320,8 +333,8 @@ export class OAuthService {
         authorization: `Bearer ${accessToken}`,
         'user-agent': ANTIGRAVITY_USER_AGENT,
       },
-    })
-    if (!res.ok) return null
+    }).catch(() => null)
+    if (!res || !res.ok) return null
     const info = await res.json() as GoogleUserInfo
     return {
       email: typeof info.email === 'string' ? info.email : undefined,
@@ -362,7 +375,7 @@ export class OAuthService {
       throw new OAuthServiceError('storage-failed', 'Secure credentials could not be read.')
     })
     if (stored === null) {
-      throw new OAuthServiceError('not-authenticated', 'No active Google Gemini sign-in exists.')
+      throw new OAuthServiceError('not-authenticated', 'No Google Gemini account is currently signed in.')
     }
     return stored
   }
@@ -392,7 +405,7 @@ export class OAuthService {
     this.activeLogin = null
     void this.store.load().then((creds) => {
       if (creds !== null) {
-        this.publish({ type: 'completed', account: sanitizeAccount(creds) })
+        this.publish(loginId, { type: 'completed', account: sanitizeAccount(creds) })
       }
     })
   }
@@ -403,7 +416,7 @@ export class OAuthService {
     this.activeLogin = null
     const pubErr = publicError(error)
     this.lastLoginError = pubErr
-    this.publish({ type: 'failed', error: pubErr })
+    this.publish(loginId, { type: 'failed', error: pubErr })
   }
 
   private cancelActive(error: OAuthServiceError, eventType: 'cancelled' | 'failed'): void {
@@ -415,14 +428,12 @@ export class OAuthService {
     server.dispose()
     const pubErr = publicError(error)
     this.lastLoginError = pubErr
-    if (eventType === 'cancelled') this.publish({ type: 'cancelled' })
-    else this.publish({ type: 'failed', error: pubErr })
+    if (eventType === 'cancelled') this.publish(id, { type: 'cancelled' })
+    else this.publish(id, { type: 'failed', error: pubErr })
   }
 
-  private publish(event: LoginEventDto): void {
-    const loginId = this.activeLogin?.id
-    if (loginId !== undefined) this.loginEvents.set(loginId, event)
-    if (loginId === undefined) return
+  private publish(loginId: string, event: LoginEventDto): void {
+    this.loginEvents.set(loginId, event)
     const set = this.listeners.get(loginId)
     if (set !== undefined) {
       for (const listener of set) {

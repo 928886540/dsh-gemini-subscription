@@ -7,7 +7,11 @@ import type {} from '@deepseek-ai/dsh-web'
 import type {} from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
-import { GeminiSubscriptionAdapter, PROVIDER_ID } from './host/adapter.ts'
+import {
+  DEFAULT_CALLBACK_PORT,
+  PROVIDER_ID,
+} from './compat.ts'
+import { GeminiSubscriptionAdapter } from './host/adapter.ts'
 import { GeminiClient } from './host/gemini-client.ts'
 import { OAuthService } from './host/oauth-service.ts'
 import { createPlatformTokenStore } from './host/platform-token-store.ts'
@@ -19,7 +23,7 @@ export const inject = ['webServer', 'llm', 'attachments', 'tools', 'web', 'setti
 
 export function apply(ctx: Context): void {
   const store = createPlatformTokenStore()
-  const oauth = new OAuthService(store, { logger: ctx.logger })
+  const oauth = new OAuthService(store, { logger: ctx.logger, preferredPort: DEFAULT_CALLBACK_PORT })
   const usage = new UsageService(oauth)
   const preferences = registerPreferenceStore(ctx.settings)
   const client = new GeminiClient(oauth, ctx.attachments, {
