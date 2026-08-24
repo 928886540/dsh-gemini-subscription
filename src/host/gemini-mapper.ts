@@ -218,9 +218,26 @@ ${block.text}` : block.text
         : (catalogEntry.defaultThinkingBudget ?? defaultThinkingBudget),
   } : undefined
 
+  const isClaude = catalogEntry.id.includes('claude') || upstreamModel.includes('claude')
+  const hardMax = isClaude ? 64_000 : 65_536
+  const requestedMaxTokens = Math.min(options.maxTokens ?? catalogEntry.maxOutputTokens ?? hardMax, hardMax)
+  const budget = thinkingConfig?.thinkingBudget ?? 0
+
+  // Claude and Gemini extended thinking strictly require maxOutputTokens > thinkingBudget
+  const maxOutputTokens = Math.min(
+    hardMax,
+    Math.max(requestedMaxTokens, budget > 0 ? Math.min(budget + 4096, hardMax) : 4096),
+  )
+
+  if (thinkingConfig && typeof thinkingConfig.thinkingBudget === 'number') {
+    if (thinkingConfig.thinkingBudget >= maxOutputTokens) {
+      thinkingConfig.thinkingBudget = Math.max(1024, maxOutputTokens - 4096)
+    }
+  }
+
   const generationConfig: GeminiGenerationConfig = {
     temperature: options.temperature,
-    maxOutputTokens: options.maxTokens ?? catalogEntry.maxOutputTokens,
+    maxOutputTokens,
     ...(options.stop ? { stopSequences: options.stop } : {}),
     ...(thinkingConfig !== undefined ? { thinkingConfig } : {}),
   }

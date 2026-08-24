@@ -53,7 +53,7 @@ export const GEMINI_MODEL_CATALOG: readonly GeminiModelCatalogEntry[] = [
     vision: true,
     tools: true,
     defaultThinkingBudget: 16384,
-    upstreamModel: 'gemini-3.7-flash-high',
+    upstreamModel: 'gemini-3.6-flash-high',
   },
   {
     id: 'gemini-3.7-flash-thinking',
@@ -66,7 +66,7 @@ export const GEMINI_MODEL_CATALOG: readonly GeminiModelCatalogEntry[] = [
     vision: true,
     tools: true,
     defaultThinkingBudget: 16384,
-    upstreamModel: 'gemini-3.7-flash-high',
+    upstreamModel: 'gemini-3.6-flash-high',
   },
   {
     id: 'gemini-3.7-flash',
@@ -79,7 +79,7 @@ export const GEMINI_MODEL_CATALOG: readonly GeminiModelCatalogEntry[] = [
     vision: true,
     tools: true,
     defaultThinkingBudget: 4096,
-    upstreamModel: 'gemini-3.7-flash',
+    upstreamModel: 'gemini-3.6-flash-high',
   },
   {
     id: 'claude-sonnet-4-6',
@@ -118,7 +118,7 @@ export const GEMINI_MODEL_CATALOG: readonly GeminiModelCatalogEntry[] = [
     vision: true,
     tools: true,
     defaultThinkingBudget: 8192,
-    upstreamModel: 'gemini-3.1-pro-high',
+    upstreamModel: 'gemini-3.1-pro-low',
   },
   {
     id: 'gemini-3.1-pro',
@@ -131,7 +131,7 @@ export const GEMINI_MODEL_CATALOG: readonly GeminiModelCatalogEntry[] = [
     vision: true,
     tools: true,
     defaultThinkingBudget: 8192,
-    upstreamModel: 'gemini-3.1-pro-high',
+    upstreamModel: 'gemini-3.1-pro-low',
   },
   {
     id: 'gemini-2.5-pro',
