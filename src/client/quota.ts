@@ -76,30 +76,28 @@ export function selectQuotaForModel(
     return null
   }
 
-  const activeBuckets = targetGroup.buckets.filter((b) => !b.disabled)
+  const activeBuckets = targetGroup.buckets.filter((b) => !b.disabled && typeof b.remainingPercent === 'number')
   if (activeBuckets.length === 0) return null
 
-  // 优先选取短期 5H 限额以反映最紧迫余量；若上游只返回了 weekly 或其他周期，则自然选取第一个真实 bucket
-  let matchedBucket = activeBuckets.find((b) => {
-    const w = (b.window || '').toLowerCase()
-    const id = b.bucketId.toLowerCase()
-    const n = b.displayName.toLowerCase()
-    return w === '5h' || id.includes('5h') || n.includes('5h') || n.includes('five')
-  })
-
-  if (!matchedBucket) {
-    matchedBucket = activeBuckets[0]
-  }
+  // 科学计算最紧迫额度：优先剩余百分比最低的 bucket（即最接近耗尽的限额）；若剩余百分比相同，优先取重置时间更近的
+  const matchedBucket = [...activeBuckets].sort((a, b) => {
+    if (a.remainingPercent !== b.remainingPercent) {
+      return a.remainingPercent - b.remainingPercent
+    }
+    const timeA = a.resetsAt ?? Number.POSITIVE_INFINITY
+    const timeB = b.resetsAt ?? Number.POSITIVE_INFINITY
+    return timeA - timeB
+  })[0]
 
   if (!matchedBucket || typeof matchedBucket.remainingPercent !== 'number') {
     return null
   }
 
   return {
-    planType: quota.tierDisplayName || quota.tier || 'Google AI Pro',
+    planType: quota.tierDisplayName || quota.tier || 'Unknown',
     usedPercent: matchedBucket.usedPercent,
     remainingPercent: matchedBucket.remainingPercent,
-    tier: quota.tier || 'google-ai-pro',
+    tier: quota.tier || 'unknown',
     resetsAt: matchedBucket.resetsAt ?? null,
   }
 }

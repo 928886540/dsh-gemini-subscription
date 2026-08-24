@@ -138,9 +138,42 @@ describe('Usage Service', () => {
     const quota = await usage.getQuota(true)
 
     expect(quota.tier).toBe('pro-tier')
+    expect(quota.tierDisplayName).toBe('Google AI Pro')
     expect(quota.projectId).toBe('test-proj')
     expect(quota.quotaGroups.length).toBe(1)
     expect(quota.quotaGroups[0].buckets[0].remainingPercent).toBe(50)
+  })
+
+  it('sets tier and tierDisplayName to null when loadCodeAssist returns no tier (no fake Pro)', async () => {
+    const store = new MemoryTokenStore()
+    await store.save({
+      accessToken: 'valid-token',
+      refreshToken: 'valid-refresh',
+      expiresAt: Date.now() + 3600 * 1000,
+    })
+
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.includes('retrieveUserQuotaSummary')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ groups: [] }),
+        })
+      }
+      if (url.includes('loadCodeAssist')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({}),
+        })
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) })
+    })
+
+    const oauth = new OAuthService(store, { fetchFn: fetchMock as unknown as typeof fetch })
+    const usage = new UsageService(oauth, { fetchFn: fetchMock as unknown as typeof fetch })
+    const quota = await usage.getQuota(true)
+
+    expect(quota.tier).toBeNull()
+    expect(quota.tierDisplayName).toBeNull()
   })
 
   it('measures connection latency via retrieveUserQuotaSummary', async () => {

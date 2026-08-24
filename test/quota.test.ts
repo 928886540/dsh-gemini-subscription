@@ -102,6 +102,44 @@ describe('Client Quota Utils', () => {
     expect(sonnetSelected?.remainingPercent).toBe(90)
   })
 
+  it('skips disabled buckets and selects the most pressing active quota', () => {
+    const quotaData: QuotaStatusDto = {
+      tier: 'google-ai-pro',
+      tierDisplayName: 'Google AI Pro',
+      projectId: 'test-project',
+      fetchedAt: Date.now(),
+      quotaGroups: [
+        {
+          displayName: 'Gemini Models',
+          buckets: [
+            {
+              bucketId: 'gemini-weekly',
+              displayName: 'Weekly Limit',
+              window: 'weekly',
+              remainingFraction: 0.3,
+              remainingPercent: 30,
+              usedPercent: 70,
+              disabled: false,
+            },
+            {
+              bucketId: 'gemini-5h',
+              displayName: 'Five Hour Limit',
+              window: '5h',
+              remainingFraction: 0.1,
+              remainingPercent: 10,
+              usedPercent: 90,
+              disabled: true, // disabled bucket should be ignored
+            },
+          ],
+        },
+      ],
+    }
+
+    const selected = selectQuotaForModel(quotaData, 'gemini-3.7-flash-high')
+    expect(selected).toBeDefined()
+    expect(selected?.remainingPercent).toBe(30) // selected weekly because 5h is disabled
+  })
+
   it('returns null when quota or group has no buckets', () => {
     expect(selectQuotaForModel(null, 'gemini-3.7-flash-high')).toBeNull()
     expect(selectQuotaForModel({ quotaGroups: [] } as any, 'gemini-3.7-flash-high')).toBeNull()

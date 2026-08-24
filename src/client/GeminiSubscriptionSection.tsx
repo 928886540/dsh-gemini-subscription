@@ -262,7 +262,7 @@ export function GeminiSubscriptionSection({ t }: Props): React.JSX.Element {
               {isInitializing ? (
                 <span className="agy-skeleton">读取中…</span>
               ) : isAuthenticated ? (
-                `⭐ ${account?.planType ?? status?.quota.tierDisplayName ?? 'Google AI Pro'}`
+                `⭐ ${account?.planType ?? status?.quota.tierDisplayName ?? 'Unknown'}`
               ) : (
                 '—'
               )}
@@ -274,7 +274,7 @@ export function GeminiSubscriptionSection({ t }: Props): React.JSX.Element {
               {isInitializing ? (
                 <span className="agy-skeleton">读取中…</span>
               ) : isAuthenticated ? (
-                account?.projectId ?? 'electric-shadow-wp2jd'
+                account?.projectId ?? status?.quota.projectId ?? '—'
               ) : (
                 '—'
               )}
@@ -368,57 +368,69 @@ export function GeminiSubscriptionSection({ t }: Props): React.JSX.Element {
           </div>
 
           <div className="agy-quota-matrix">
-            {quotaGroups.length === 0 ? (
+            {quotaGroups
+              .map((group) => ({
+                ...group,
+                activeBuckets: group.buckets.filter((b) => !b.disabled),
+              }))
+              .filter((group) => group.activeBuckets.length > 0)
+              .length === 0 ? (
               <div style={{ padding: '24px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
                 暂无真实额度数据
               </div>
             ) : (
-              quotaGroups.map((group) => (
-                <div key={group.displayName} className="agy-quota-window-card">
-                  <div className="agy-quota-window-head">
-                    <span className="agy-window-tag">
-                      <span>🤖</span> {group.displayName}
-                    </span>
-                    {group.description && (
-                      <span className="agy-window-reset">
-                        {group.description.replace(/^Models within this group:\s*/i, '包含: ')}
+              quotaGroups
+                .map((group) => ({
+                  ...group,
+                  activeBuckets: group.buckets.filter((b) => !b.disabled),
+                }))
+                .filter((group) => group.activeBuckets.length > 0)
+                .map((group) => (
+                  <div key={group.displayName} className="agy-quota-window-card">
+                    <div className="agy-quota-window-head">
+                      <span className="agy-window-tag">
+                        <span>🤖</span> {group.displayName}
                       </span>
-                    )}
-                  </div>
+                      {group.description && (
+                        <span className="agy-window-reset">
+                          {group.description.replace(/^Models within this group:\s*/i, '包含: ')}
+                        </span>
+                      )}
+                    </div>
 
-                  <div className="agy-quota-columns">
-                    {group.buckets.map((bucket) => {
-                      const level = bucket.remainingPercent <= 10 ? 'danger' : bucket.remainingPercent <= 20 ? 'warning' : 'normal'
-                      const resetText = formatRelativeReset(bucket.resetsAt)
-                      const bucketLabel = formatWindowLabel(bucket)
-                      const badgeText = formatWindowBadge(bucket)
+                    <div className="agy-quota-columns">
+                      {group.activeBuckets.map((bucket) => {
+                        const level = bucket.remainingPercent <= 10 ? 'danger' : bucket.remainingPercent <= 20 ? 'warning' : 'normal'
+                        const resetText = formatRelativeReset(bucket.resetsAt)
+                        const bucketLabel = formatWindowLabel(bucket)
+                        const badgeText = formatWindowBadge(bucket)
 
-                      return (
-                        <div key={bucket.bucketId} className="agy-quota-track">
-                          <div className="agy-track-header">
-                            <span className="agy-track-title">
-                              <span className="agy-track-badge">{badgeText}</span> {bucketLabel}
-                            </span>
-                            <span className={`agy-track-pct ${level}`}>
-                              {bucket.remainingPercent}%
-                            </span>
+                        return (
+                          <div key={bucket.bucketId} className="agy-quota-track">
+                            <div className="agy-track-header">
+                              <span className="agy-track-title">
+                                <span className="agy-track-badge">{badgeText}</span> {bucketLabel}
+                              </span>
+                              <span className={`agy-track-pct ${level}`}>
+                                {bucket.remainingPercent}%
+                              </span>
+                            </div>
+                            <div className="agy-progress-bar">
+                              <div
+                                className={`agy-progress-fill ${level}`}
+                                style={{ width: `${Math.max(0, Math.min(100, bucket.remainingPercent))}%` }}
+                              />
+                            </div>
+                            <div className="agy-track-meta">
+                              <span>{bucket.usedPercent}% 已用</span>
+                              <span>{resetText ? `刷新时间: ${resetText}` : `${bucket.remainingPercent}% 剩余`}</span>
+                            </div>
                           </div>
-                          <div className="agy-progress-bar">
-                            <div
-                              className={`agy-progress-fill ${level}`}
-                              style={{ width: `${Math.max(0, Math.min(100, bucket.remainingPercent))}%` }}
-                            />
-                          </div>
-                          <div className="agy-track-meta">
-                            <span>{bucket.usedPercent}% 已用</span>
-                            <span>{resetText ? `刷新时间: ${resetText}` : `${bucket.remainingPercent}% 剩余`}</span>
-                          </div>
-                        </div>
-                      )
-                    })}
+                        )
+                      })}
+                    </div>
                   </div>
-                </div>
-              ))
+                ))
             )}
           </div>
 

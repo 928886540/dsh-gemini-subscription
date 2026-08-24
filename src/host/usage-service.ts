@@ -139,8 +139,8 @@ export class UsageService {
         }
       }
 
-      const tier = assistData?.paidTier?.id ?? assistData?.currentTier?.id ?? assistData?.userTier?.id ?? 'google-ai-pro'
-      const tierDisplayName = assistData?.paidTier?.name ?? assistData?.currentTier?.name ?? assistData?.userTier?.name ?? 'Google AI Pro'
+      const tier = assistData?.paidTier?.id ?? assistData?.currentTier?.id ?? assistData?.userTier?.id ?? null
+      const tierDisplayName = assistData?.paidTier?.name ?? assistData?.currentTier?.name ?? assistData?.userTier?.name ?? null
 
       let projectId = credentials.projectId
       const rawProject = quotaSummaryData?.cloudaicompanionProject ?? assistData?.cloudaicompanionProject
