@@ -116,4 +116,51 @@ describe('Gemini Mapper', () => {
       expect(Object.prototype.hasOwnProperty.call(usageChunk.usage, 'reasoningTokens')).toBe(false)
     }
   })
+
+  it('wraps array and primitive tool results into a struct object to prevent proto 400', async () => {
+    const payload = await mapGenerateOptionsToGeminiPayload(
+      {
+        provider: 'gemini-subscription',
+        model: 'gemini-3.7-flash-high',
+        messages: [
+          {
+            role: 'user',
+            content: [{ type: 'text', text: 'find files' }],
+          },
+          {
+            role: 'assistant',
+            content: [
+              {
+                type: 'tool-call',
+                id: 'call_grep' as any,
+                name: 'grep',
+                arguments: '{"pattern":"foo"}',
+              },
+            ],
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'tool-result',
+                toolCallId: 'call_grep' as any,
+                content: [{ type: 'text', text: '[{"file":"a.ts"},{"file":"b.ts"}]' }],
+              },
+            ],
+          },
+        ],
+      },
+      'test-project',
+    )
+
+    const contents = payload.request.contents
+    expect(contents.length).toBe(3)
+    const toolRespPart = contents[2].parts[0]
+    expect(toolRespPart.functionResponse).toBeDefined()
+    expect(Array.isArray(toolRespPart.functionResponse?.response)).toBe(false)
+    expect(typeof toolRespPart.functionResponse?.response).toBe('object')
+    expect(toolRespPart.functionResponse?.response).toEqual({
+      output: [{ file: 'a.ts' }, { file: 'b.ts' }],
+    })
+  })
 })

@@ -176,7 +176,12 @@ export async function mapGenerateOptionsToGeminiPayload(
           }
           let parsed: Record<string, unknown>
           try {
-            parsed = JSON.parse(textResult)
+            const temp = JSON.parse(textResult)
+            if (temp !== null && typeof temp === 'object' && !Array.isArray(temp)) {
+              parsed = temp as Record<string, unknown>
+            } else {
+              parsed = { output: temp }
+            }
           } catch {
             parsed = { output: textResult }
           }
@@ -187,7 +192,6 @@ export async function mapGenerateOptionsToGeminiPayload(
           parts.push({
             functionResponse: {
               name: toolName,
-              id: String(block.toolCallId),
               response: parsed,
             },
           })

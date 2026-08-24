@@ -42,7 +42,7 @@ export function normalizeContextWindow(val: number): number {
 export const GEMINI_MODEL_CATALOG: readonly GeminiModelCatalogEntry[] = [
   {
     id: 'gemini-3.7-flash-high',
-    name: '✨ Gemini 3.7 Flash (High)',
+    name: 'Gemini 3.7 Flash (High)',
     description: '旗舰深度思考与编码 (High)',
     contextWindow: DEFAULT_CONTEXT_WINDOW,
     maxContextWindow: 1_048_576,
@@ -185,7 +185,7 @@ export const GEMINI_MODEL_CATALOG: readonly GeminiModelCatalogEntry[] = [
   },
   {
     id: 'claude-sonnet-4-6',
-    name: '🔥 Claude Sonnet 4.6 (Thinking)',
+    name: 'Claude Sonnet 4.6 (Thinking)',
     description: 'Claude 4.6 顶级代码与思考',
     contextWindow: 200_000,
     maxContextWindow: 200_000,
@@ -198,7 +198,7 @@ export const GEMINI_MODEL_CATALOG: readonly GeminiModelCatalogEntry[] = [
   },
   {
     id: 'claude-opus-4-6-thinking',
-    name: '🔥 Claude Opus 4.6 (Thinking)',
+    name: 'Claude Opus 4.6 (Thinking)',
     description: 'Claude 4.6 深度推演旗舰',
     contextWindow: 200_000,
     maxContextWindow: 200_000,
