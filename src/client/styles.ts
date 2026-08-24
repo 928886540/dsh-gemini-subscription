@@ -84,6 +84,24 @@ const CSS_TEXT = `
   border: 1px solid rgba(148, 163, 184, 0.25);
   color: #94a3b8;
 }
+
+.agy-status-pill.loading {
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  color: #38bdf8;
+}
+
+.agy-skeleton {
+  display: inline-block;
+  color: #94a3b8;
+  font-style: normal;
+  animation: agyPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes agyPulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
 .agy-status-dot {
   width: 7px;
   height: 7px;

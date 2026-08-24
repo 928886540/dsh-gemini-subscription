@@ -201,6 +201,7 @@ export function GeminiSubscriptionSection({ t }: Props): React.JSX.Element {
 
   const account = status?.account
   const isAuthenticated = status?.authenticated === true
+  const isInitializing = status === null && error === null
   const quotaGroups: QuotaGroupDto[] = status?.quota.quotaGroups ?? []
 
   return (
@@ -215,9 +216,9 @@ export function GeminiSubscriptionSection({ t }: Props): React.JSX.Element {
             Google Antigravity 官方订阅协议接入 · 支持 Gemini 3.7 深度思考、Claude 4.6 与百万上下文旗舰矩阵
           </p>
         </div>
-        <div className={`agy-status-pill ${isAuthenticated ? 'online' : 'offline'}`}>
+        <div className={`agy-status-pill ${isInitializing ? 'loading' : isAuthenticated ? 'online' : 'offline'}`}>
           <span className="agy-status-dot" />
-          <span>{isAuthenticated ? '已就绪 (已登录)' : '未连接'}</span>
+          <span>{isInitializing ? '正在读取状态…' : isAuthenticated ? '已就绪 (已登录)' : '未连接'}</span>
         </div>
       </header>
 
@@ -245,38 +246,66 @@ export function GeminiSubscriptionSection({ t }: Props): React.JSX.Element {
           <div className="agy-info-cell">
             <span className="agy-info-k">Google 账号</span>
             <span className="agy-info-v highlight">
-              {isAuthenticated ? (account?.name ? `${account.name} (${account.email})` : account?.email) : '尚未登录'}
+              {isInitializing ? (
+                <span className="agy-skeleton">正在读取账号…</span>
+              ) : isAuthenticated ? (
+                account?.name ? `${account.name} (${account.email})` : account?.email
+              ) : (
+                '尚未登录'
+              )}
             </span>
           </div>
           <div className="agy-info-cell">
             <span className="agy-info-k">订阅套餐</span>
             <span className="agy-info-v">
-              {isAuthenticated ? `⭐ ${account?.planType ?? status?.quota.tierDisplayName ?? 'Google AI Pro'}` : '—'}
+              {isInitializing ? (
+                <span className="agy-skeleton">读取中…</span>
+              ) : isAuthenticated ? (
+                `⭐ ${account?.planType ?? status?.quota.tierDisplayName ?? 'Google AI Pro'}`
+              ) : (
+                '—'
+              )}
             </span>
           </div>
           <div className="agy-info-cell">
             <span className="agy-info-k">关联项目 ID</span>
             <span className="agy-info-v">
-              {isAuthenticated ? (account?.projectId ?? 'electric-shadow-wp2jd') : '—'}
+              {isInitializing ? (
+                <span className="agy-skeleton">读取中…</span>
+              ) : isAuthenticated ? (
+                account?.projectId ?? 'electric-shadow-wp2jd'
+              ) : (
+                '—'
+              )}
             </span>
           </div>
           <div className="agy-info-cell">
             <span className="agy-info-k">令牌生命周期</span>
             <span className="agy-info-v secure">
-              {isAuthenticated ? '🛡️ 长期有效（自动静默续期）' : '未生成'}
+              {isInitializing ? (
+                <span className="agy-skeleton">读取中…</span>
+              ) : isAuthenticated ? (
+                '🛡️ 长期有效（自动静默续期）'
+              ) : (
+                '未生成'
+              )}
             </span>
           </div>
           <div className="agy-info-cell">
             <span className="agy-info-k">凭据存储保护</span>
             <span className="agy-info-v">
-              {storageLabel(status?.storage)}
+              {isInitializing ? (
+                <span className="agy-skeleton">正在检测凭据存储…</span>
+              ) : (
+                storageLabel(status?.storage)
+              )}
             </span>
           </div>
         </div>
 
         <div className="agy-security-banner">
           <span>🔒</span>
-          <span>{storageNotice(status?.storage)}</span>
+          <span>{isInitializing ? '🔍 正在检测当前环境凭据存储与登录状态…' : storageNotice(status?.storage)}</span>
         </div>
 
         {status?.login.active && !isAuthenticated ? (
