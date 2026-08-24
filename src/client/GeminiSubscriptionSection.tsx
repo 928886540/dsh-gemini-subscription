@@ -1,118 +1,100 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react'
-import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
-import type { PluginStatusDto } from '../shared/contracts.ts'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type {
+  CredentialStorageDto,
+  PluginStatusDto,
+  QuotaBucketDto,
+  QuotaWindowDto,
+  SubscriptionPreferencesUpdateDto,
+} from '../shared/contracts.ts'
+import { GEMINI_MODEL_CATALOG } from '../shared/model-catalog.ts'
 import { GeminiSubscriptionApi, parseLoginEvent } from './api.ts'
 import { NS } from './locales.ts'
 
-type Props = PropsLocale<typeof NS>
+type Props = PropsRuntime<'settings.section'> & PropsLocale<typeof NS>
+type BusyAction = 'login' | 'token' | 'quota' | 'test' | 'logout' | 'preferences' | null
+type Translate = Props['t']
 
 export function GeminiSubscriptionSection({ t }: Props): React.JSX.Element {
   const apiRef = useRef(new GeminiSubscriptionApi())
+  const eventSourceRef = useRef<EventSource | null>(null)
   const [status, setStatus] = useState<PluginStatusDto | null>(null)
-  const [busy, setBusy] = useState<string | null>(null)
+  const [busy, setBusy] = useState<BusyAction>(null)
   const [error, setError] = useState<string | null>(null)
   const [authUrl, setAuthUrl] = useState<string | null>(null)
   const [popupBlocked, setPopupBlocked] = useState(false)
-  const [latency, setLatency] = useState<number | null>(null)
-  const eventSourceRef = useRef<EventSource | null>(null)
+  const [connection, setConnection] = useState<{ latencyMs: number; checkedAt: number } | null>(null)
 
-  const load = useCallback(async (background = false): Promise<void> => {
-    if (!background) setBusy('load')
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setError(null)
     try {
-      const data = await apiRef.current.status()
-      setStatus(data)
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      if (!background) setBusy(null)
+      const next = await apiRef.current.status()
+      setStatus(next)
+      if (next.error !== undefined) setError(next.error.message)
+    } catch (cause) {
+      if (!quiet) setError(messageOf(cause))
     }
   }, [])
-
-  const closeEvents = useCallback(() => {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close()
-      eventSourceRef.current = null
-    }
-  }, [])
-
-  const watchLogin = useCallback((loginId: string) => {
-    closeEvents()
-    const es = apiRef.current.events(loginId)
-    eventSourceRef.current = es
-
-    const handleEvent = (parsed: ReturnType<typeof parseLoginEvent>) => {
-      if (!parsed) return
-      if (parsed.type === 'completed') {
-        closeEvents()
-        setBusy(null)
-        setAuthUrl(null)
-        void load(true)
-      } else if (parsed.type === 'failed') {
-        closeEvents()
-        setBusy(null)
-        setError(parsed.error.message)
-      } else if (parsed.type === 'cancelled') {
-        closeEvents()
-        setBusy(null)
-        setAuthUrl(null)
-      }
-    }
-
-    es.onmessage = (ev) => {
-      handleEvent(parseLoginEvent(ev))
-    }
-
-    es.addEventListener('completed', (ev) => {
-      handleEvent(parseLoginEvent(ev as MessageEvent<string>))
-    })
-
-    es.addEventListener('failed', (ev) => {
-      handleEvent(parseLoginEvent(ev as MessageEvent<string>))
-    })
-
-    es.addEventListener('cancelled', (ev) => {
-      handleEvent(parseLoginEvent(ev as MessageEvent<string>))
-    })
-
-    es.onerror = () => {
-      closeEvents()
-      void load(true)
-    }
-  }, [closeEvents, load])
 
   useEffect(() => {
     void load()
-    return () => closeEvents()
-  }, [load, closeEvents])
-
-  useEffect(() => {
-    const loginId = status?.login.active ? status.login.loginId : null
-    if (loginId && !eventSourceRef.current) {
-      watchLogin(loginId)
+    const refreshWhenVisible = (): void => {
+      if (document.visibilityState === 'visible') void load(true)
     }
-  }, [status?.login.active, status?.login.loginId, watchLogin])
-
-  // Fallback polling and focus sync while login is active
-  useEffect(() => {
-    if (!status?.login.active) return
-    const interval = setInterval(() => {
-      void load(true)
-    }, 2000)
-    return () => clearInterval(interval)
-  }, [status?.login.active, load])
-
-  useEffect(() => {
-    const onFocus = (): void => {
-      void load(true)
-    }
-    window.addEventListener('focus', onFocus)
-    document.addEventListener('visibilitychange', onFocus)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    window.addEventListener('focus', refreshWhenVisible)
+    const timer = window.setInterval(refreshWhenVisible, 60_000)
     return () => {
-      window.removeEventListener('focus', onFocus)
-      document.removeEventListener('visibilitychange', onFocus)
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+      window.removeEventListener('focus', refreshWhenVisible)
+      eventSourceRef.current?.close()
     }
   }, [load])
+
+  const watchLogin = useCallback((loginId: string) => {
+    eventSourceRef.current?.close()
+    const source = apiRef.current.events(loginId)
+    eventSourceRef.current = source
+
+    const finish = async (message?: string): Promise<void> => {
+      source.close()
+      eventSourceRef.current = null
+      setBusy(null)
+      setAuthUrl(null)
+      if (message !== undefined) setError(message)
+      await load(true)
+    }
+
+    const handleParsed = (parsed: ReturnType<typeof parseLoginEvent>) => {
+      if (!parsed) return
+      if (parsed.type === 'completed') void finish()
+      else if (parsed.type === 'cancelled') void finish()
+      else if (parsed.type === 'failed') void finish(parsed.error.message)
+    }
+
+    source.onmessage = (event) => {
+      handleParsed(parseLoginEvent(event))
+    }
+    source.addEventListener('completed', (event) => {
+      handleParsed(parseLoginEvent(event as MessageEvent<string>))
+    })
+    source.addEventListener('cancelled', () => void finish())
+    source.addEventListener('failed', (event) => {
+      const parsed = parseLoginEvent(event as MessageEvent<string>)
+      void finish(parsed?.type === 'failed' ? parsed.error.message : 'Google sign-in failed.')
+    })
+    source.onerror = () => {
+      void finish()
+    }
+  }, [load])
+
+  useEffect(() => {
+    const loginId = status?.login.active && !status?.authenticated ? status.login.loginId : null
+    if (loginId !== null && loginId !== undefined && eventSourceRef.current === null) {
+      watchLogin(loginId)
+    }
+  }, [status?.login.active, status?.login.loginId, status?.authenticated, watchLogin])
 
   const startLogin = async (): Promise<void> => {
     setBusy('login')
@@ -129,81 +111,72 @@ export function GeminiSubscriptionSection({ t }: Props): React.JSX.Element {
       }
       watchLogin(login.loginId)
       await load(true)
-    } catch (err) {
+    } catch (cause) {
       popup?.close()
       setBusy(null)
-      setError(err instanceof Error ? err.message : String(err))
+      setError(messageOf(cause))
     }
   }
 
   const cancelLogin = async (): Promise<void> => {
     const loginId = status?.login.loginId
     if (!loginId) return
-    setBusy('cancel')
+    setBusy('login')
     try {
       await apiRef.current.cancelLogin(loginId)
-      closeEvents()
+      eventSourceRef.current?.close()
+      eventSourceRef.current = null
       setAuthUrl(null)
-      await load(true)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      await load()
+    } catch (cause) {
+      setError(messageOf(cause))
     } finally {
       setBusy(null)
     }
   }
 
-  const logout = async (): Promise<void> => {
-    setBusy('logout')
+  const refreshToken = async (): Promise<void> => run('token', async () => {
+    const res = await apiRef.current.refresh()
+    setStatus(res)
+  })
+
+  const refreshQuota = async (): Promise<void> => run('quota', async () => {
+    const quota = await apiRef.current.getQuota(true)
+    setStatus((cur) => (cur === null ? cur : { ...cur, quota }))
+  })
+
+  const testConnection = async (): Promise<void> => run('test', async () => {
+    const result = await apiRef.current.testConnection()
+    if (result.ok) {
+      setConnection({ latencyMs: result.latencyMs, checkedAt: Date.now() })
+    } else {
+      setError(result.error ?? 'Connection test failed')
+    }
+  })
+
+  const updatePreferences = async (patch: SubscriptionPreferencesUpdateDto): Promise<void> => run('preferences', async () => {
+    const preferences = await apiRef.current.updatePreferences(patch)
+    setStatus((cur) => (cur === null ? cur : { ...cur, preferences }))
+  })
+
+  const logout = async (): Promise<void> => run('logout', async () => {
+    await apiRef.current.logout()
+    eventSourceRef.current?.close()
+    eventSourceRef.current = null
+    setAuthUrl(null)
+    setConnection(null)
+    await load()
+  })
+
+  const run = async (action: Exclude<BusyAction, null>, task: () => Promise<void>): Promise<void> => {
+    setBusy(action)
+    setError(null)
     try {
-      await apiRef.current.logout()
-      closeEvents()
-      setAuthUrl(null)
-      await load(true)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      await task()
+    } catch (cause) {
+      setError(messageOf(cause))
     } finally {
       setBusy(null)
-    }
-  }
-
-  const refreshToken = async (): Promise<void> => {
-    setBusy('refresh')
-    try {
-      const data = await apiRef.current.refresh()
-      setStatus(data)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  const testConnection = async (): Promise<void> => {
-    setBusy('test')
-    try {
-      const res = await apiRef.current.testConnection()
-      if (res.ok) {
-        setLatency(res.latencyMs)
-        setError(null)
-      } else {
-        setError(res.error ?? 'Connection test failed')
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  const toggleQuickQuota = async (): Promise<void> => {
-    if (!status) return
-    try {
-      const next = await apiRef.current.updatePreferences({
-        quickQuotaVisible: !status.preferences.quickQuotaVisible,
-      })
-      setStatus({ ...status, preferences: next })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
     }
   }
 
@@ -211,205 +184,257 @@ export function GeminiSubscriptionSection({ t }: Props): React.JSX.Element {
   const isAuthenticated = status?.authenticated === true
 
   return (
-    <div className="dsh-gemini-section">
-      <div className="dsh-gemini-card">
-        <div className="dsh-gemini-card-header">
-          <h2 className="dsh-gemini-title">
-            <span>✨</span> {t('title')}
-          </h2>
-          {isAuthenticated ? (
-            <span className="dsh-gemini-badge dsh-gemini-badge-success">{t('signedIn')}</span>
-          ) : (
-            <span className="dsh-gemini-badge dsh-gemini-badge-neutral">{t('signedOut')}</span>
-          )}
+    <section className="dsh-gemini-page" aria-labelledby="dsh-gemini-title">
+      <header>
+        <h2 id="dsh-gemini-title" className="dsh-gemini-title">{t('title')}</h2>
+        <p className="dsh-gemini-intro">{t('intro')}</p>
+      </header>
+
+      {error !== null ? (
+        <div className="dsh-gemini-errorbar" role="alert">
+          <span>{error}</span>
+          {status === null ? <Button disabled={busy !== null} onClick={() => load()}>重试</Button> : null}
         </div>
-        <p style={{ margin: '0 0 16px 0', fontSize: '14px', color: '#94a3b8' }}>
-          {t('intro')}
-        </p>
+      ) : null}
 
-        {error && (
-          <div style={{ padding: '12px 16px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', color: '#f87171', fontSize: '13px', marginBottom: '16px' }}>
-            {error}
-          </div>
-        )}
+      {status === null && error === null ? (
+        <Skeleton label={t('loading')} />
+      ) : (
+        <>
+          <Section title={t('account')}>
+            <InfoRow label={isAuthenticated ? t('signedIn') : t('signedOut')} value={account?.email ?? '—'} />
+            {isAuthenticated ? (
+              <>
+                <InfoRow label={t('plan')} value={account?.planType ?? 'Google AI Pro'} />
+                <InfoRow label={t('projectId')} value={account?.projectId ?? '—'} />
+                <InfoRow label={t('expires')} value={formatDate(account?.tokenExpiresAt)} />
+              </>
+            ) : null}
+            <InfoRow label={t('storage')} value={storageLabel(status?.storage, t)} />
+            <p className="dsh-gemini-notice">{storageNotice(status?.storage, t)}</p>
 
-        {status?.login.active ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <p style={{ margin: 0, fontSize: '14px', color: '#38bdf8' }}>{t('pending')}</p>
-            {popupBlocked && authUrl && (
-              <div>
-                <p style={{ margin: '0 0 8px 0', fontSize: '13px', color: '#fbbf24' }}>{t('popupBlocked')}</p>
-                <a href={authUrl} target="_blank" rel="noreferrer" className="dsh-gemini-btn dsh-gemini-btn-primary">
-                  {t('continueLogin')}
-                </a>
-              </div>
-            )}
-            <div>
-              <button className="dsh-gemini-btn dsh-gemini-btn-secondary" onClick={cancelLogin} disabled={busy === 'cancel'}>
-                {t('cancel')}
-              </button>
-            </div>
-          </div>
-        ) : isAuthenticated && account ? (
-          <div>
-            <div className="dsh-gemini-account-info">
-              <div className="dsh-gemini-info-item">
-                <span className="dsh-gemini-info-label">{t('account')}</span>
-                <span className="dsh-gemini-info-val">{account.name ? `${account.name} (${account.email})` : (account.email ?? '—')}</span>
-              </div>
-              <div className="dsh-gemini-info-item">
-                <span className="dsh-gemini-info-label">{t('plan')}</span>
-                <span className="dsh-gemini-info-val">{account.planType ?? 'Google Gemini'}</span>
-              </div>
-              <div className="dsh-gemini-info-item">
-                <span className="dsh-gemini-info-label">{t('projectId')}</span>
-                <span className="dsh-gemini-info-val">{account.projectId ?? 'default-cli-project'}</span>
-              </div>
-              <div className="dsh-gemini-info-item">
-                <span className="dsh-gemini-info-label">{t('expires')}</span>
-                <span className="dsh-gemini-info-val">{new Date(account.tokenExpiresAt).toLocaleTimeString()}</span>
-              </div>
-            </div>
+            {status?.login.active && !isAuthenticated ? (
+              <p className="dsh-gemini-muted" role="status">{t('pending')}</p>
+            ) : null}
+            {popupBlocked ? <p className="dsh-gemini-error">{t('popupBlocked')}</p> : null}
+            {authUrl !== null && !isAuthenticated ? (
+              <a className="dsh-gemini-link" href={authUrl} target="_blank" rel="noreferrer">{t('continueLogin')}</a>
+            ) : null}
 
-            <div style={{ display: 'flex', gap: '10px', marginTop: '20px', flexWrap: 'wrap' }}>
-              <button className="dsh-gemini-btn dsh-gemini-btn-secondary" onClick={refreshToken} disabled={busy === 'refresh'}>
-                {busy === 'refresh' ? t('refreshing') : t('refreshToken')}
-              </button>
-              <button className="dsh-gemini-btn dsh-gemini-btn-secondary" onClick={testConnection} disabled={busy === 'test'}>
-                {busy === 'test' ? t('testing') : t('testConnection')}
-              </button>
-              <button className="dsh-gemini-btn dsh-gemini-btn-danger" onClick={logout} disabled={busy === 'logout'}>
-                {t('signOut')}
-              </button>
-              {latency !== null && (
-                <span style={{ display: 'inline-flex', alignItems: 'center', fontSize: '13px', color: '#4ade80', marginLeft: '8px' }}>
-                  {t('latency')}: {latency}ms
-                </span>
+            <div className="dsh-gemini-actions">
+              {status?.login.active && !isAuthenticated ? (
+                <Button disabled={busy !== null} onClick={cancelLogin}>{t('cancel')}</Button>
+              ) : (
+                <Button primary disabled={busy !== null || status?.storage.available === false} onClick={startLogin}>
+                  {isAuthenticated ? t('signInAgain') : t('signIn')}
+                </Button>
               )}
+              {isAuthenticated ? (
+                <>
+                  <Button disabled={busy !== null} onClick={refreshToken}>{t('refreshToken')}</Button>
+                  <Button disabled={busy !== null} onClick={logout}>{t('signOut')}</Button>
+                </>
+              ) : null}
             </div>
-          </div>
-        ) : (
-          <div>
-            <button className="dsh-gemini-btn dsh-gemini-btn-primary" onClick={startLogin} disabled={busy === 'login'}>
-              <span>🔑</span> {t('signIn')}
-            </button>
-          </div>
-        )}
-      </div>
+          </Section>
 
-      {isAuthenticated && (
-        <div className="dsh-gemini-card">
-          <div className="dsh-gemini-card-header">
-            <h3 className="dsh-gemini-title">
-              <span>📊</span> {t('quotaTitle')}
-            </h3>
-            <button
-              className="dsh-gemini-btn dsh-gemini-btn-secondary"
-              onClick={async () => {
-                setBusy('quota')
-                try {
-                  const updated = await apiRef.current.getQuota(true)
-                  if (status) setStatus({ ...status, quota: updated })
-                } catch (err) {
-                  setError(err instanceof Error ? err.message : String(err))
-                } finally {
-                  setBusy(null)
-                }
-              }}
-              disabled={busy === 'quota'}
-            >
-              {busy === 'quota' ? t('refreshing') : t('refreshQuota')}
-            </button>
-          </div>
-          <p style={{ margin: '0 0 16px 0', fontSize: '13px', color: '#94a3b8' }}>
-            {t('quotaIntro')}
-          </p>
+          <Section title={t('connection')}>
+            <InfoRow label={t('provider')} value="Antigravity（AGY 订阅） · gemini-subscription" />
+            <InfoRow label={t('connectionState')} value={connection === null ? (isAuthenticated ? t('connected') : t('untested')) : t('connected')} />
+            {connection !== null ? (
+              <InfoRow label={t('latency')} value={`${connection.latencyMs} ms · ${formatDate(connection.checkedAt)}`} />
+            ) : null}
+            <div className="dsh-gemini-models" aria-label={t('models')}>
+              {GEMINI_MODEL_CATALOG.map((model) => (
+                <code key={model.id} title={model.id}>{model.name}</code>
+              ))}
+            </div>
+            <div className="dsh-gemini-actions">
+              <Button disabled={!isAuthenticated || busy !== null} onClick={testConnection}>
+                {busy === 'test' ? t('testing') : t('testConnection')}
+              </Button>
+            </div>
+          </Section>
 
-          {status?.quota?.buckets && status.quota.buckets.length > 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              {status.quota.buckets.map((bucket) => {
-                const primary = bucket.primary
-                const remaining = typeof primary?.remainingPercent === 'number'
-                  ? primary.remainingPercent
-                  : Math.max(0, 100 - (primary?.usedPercent ?? 0))
-                const used = primary?.usedPercent ?? 0
-                const resetTimeStr = primary?.resetsAt ? new Date(primary.resetsAt).toLocaleString() : null
+          <Section title={t('enhancements')}>
+            <label className="dsh-gemini-check">
+              <input
+                type="checkbox"
+                checked={status?.preferences.quickQuotaVisible === true}
+                disabled={busy !== null}
+                onChange={(event) => updatePreferences({ quickQuotaVisible: event.currentTarget.checked })}
+              />
+              <span>
+                <strong>{t('quickQuota')}</strong>
+                <small>{t('quickQuotaHint')}</small>
+              </span>
+            </label>
+          </Section>
 
-                return (
-                  <div key={bucket.id} style={{ padding: '12px 14px', background: 'rgba(255, 255, 255, 0.03)', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                      <span style={{ fontWeight: 600, fontSize: '14px', color: '#f1f5f9' }}>{bucket.name}</span>
-                      <span style={{ fontSize: '12px', color: '#38bdf8', background: 'rgba(56, 189, 248, 0.12)', padding: '2px 8px', borderRadius: '4px' }}>
-                        {bucket.planType || status.quota?.tierDisplayName || 'Free Tier'}
-                      </span>
-                    </div>
+          <Section
+            title={t('quota')}
+            aside={
+              <Button disabled={!isAuthenticated || busy !== null} onClick={refreshQuota}>
+                {busy === 'quota' ? t('refreshing') : t('refreshQuota')}
+              </Button>
+            }
+          >
+            <p className="dsh-gemini-muted">{t('quotaIntro')}</p>
 
-                    {typeof bucket.creditAmount === 'number' ? (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', color: '#cbd5e1' }}>
-                        <span>{t('creditBalance')}:</span>
-                        <strong style={{ color: '#38bdf8', fontSize: '14px' }}>{bucket.creditAmount.toLocaleString()} Credits</strong>
+            {/* CPA Style Quota List */}
+            {status?.quota.buckets && status.quota.buckets.length > 0 ? (
+              <div>
+                {status.quota.buckets.map((bucket) => {
+                  if (typeof bucket.creditAmount === 'number') {
+                    return (
+                      <div key={bucket.id} className="dsh-gemini-quota-fact">
+                        <span>{bucket.name}</span>
+                        <strong>{bucket.creditAmount.toLocaleString()} Credits</strong>
                       </div>
-                    ) : (
-                      <>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>
-                          <span>{t('quotaRemaining')}: <strong style={{ color: remaining > 20 ? '#4ade80' : '#f87171' }}>{remaining}%</strong></span>
-                          <span>{t('quotaUsed')}: {used}%</span>
-                        </div>
+                    )
+                  }
 
-                        <div style={{ width: '100%', height: '6px', background: 'rgba(255, 255, 255, 0.1)', borderRadius: '3px', overflow: 'hidden' }}>
-                          <div
-                            style={{
-                              width: `${remaining}%`,
-                              height: '100%',
-                              background: remaining > 20 ? 'linear-gradient(90deg, #38bdf8, #4ade80)' : '#f87171',
-                              borderRadius: '3px',
-                              transition: 'width 0.3s ease',
-                            }}
-                          />
-                        </div>
+                  const primary = bucket.primary
+                  if (!primary) return null
+                  const remaining = typeof primary.remainingPercent === 'number'
+                    ? primary.remainingPercent
+                    : Math.max(0, 100 - (primary.usedPercent ?? 0))
+                  const used = primary.usedPercent ?? (100 - remaining)
+                  const level = remaining <= 10 ? 'danger' : remaining <= 20 ? 'warning' : 'normal'
+                  const cleanName = formatBucketName(bucket.id, bucket.name)
 
-                        {resetTimeStr && (
-                          <div style={{ marginTop: '8px', fontSize: '11px', color: '#64748b' }}>
-                            {t('quotaResetAt')}: {resetTimeStr}
+                  return (
+                    <article key={bucket.id} className="dsh-gemini-quota-card">
+                      <div className="dsh-gemini-quota-title">
+                        <strong>{cleanName}</strong>
+                        <span>{bucket.planType || status.quota.tierDisplayName || 'Google AI Pro'}</span>
+                      </div>
+
+                      <div className="dsh-gemini-meter-wrap">
+                        <div className="dsh-gemini-meter-row">
+                          <div className={`dsh-gemini-meter-bar dsh-gemini-meter-${level}`}>
+                            <span style={{ width: `${remaining}%` }} />
                           </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          ) : (
-            <div style={{ padding: '12px 14px', background: 'rgba(255, 255, 255, 0.02)', borderRadius: '8px', color: '#64748b', fontSize: '13px' }}>
-              {t('quotaUnavailable')}
-            </div>
-          )}
-        </div>
+                          <span className={`dsh-gemini-meter-pct ${level}`}>{remaining}%</span>
+                        </div>
+                        <div className="dsh-gemini-meter-meta">
+                          <span>{used}% {t('used')} · {remaining}% {t('remaining')}</span>
+                          <span>{primary.resetsAt ? `${t('resets')}: ${formatRelativeReset(primary.resetsAt)}` : '—'}</span>
+                        </div>
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+            ) : (
+              <p className="dsh-gemini-empty">{t('quotaUnavailable')}</p>
+            )}
+
+            {status?.quota.fetchedAt ? (
+              <p className="dsh-gemini-timestamp">
+                {t('updated')}: {formatDate(status.quota.fetchedAt)}
+              </p>
+            ) : null}
+          </Section>
+        </>
       )}
 
-      <div className="dsh-gemini-card">
-        <h3 className="dsh-gemini-title" style={{ marginBottom: '12px' }}>
-          <span>🚀</span> {t('models')}
-        </h3>
-        <p style={{ margin: 0, fontSize: '13px', color: '#94a3b8' }}>
-          {t('modelsList')}
-        </p>
-      </div>
+      <span className="dsh-gemini-sr" aria-live="polite">{busy === null ? '' : busy}</span>
+    </section>
+  )
+}
 
-      <div className="dsh-gemini-card">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
-            <h4 style={{ margin: '0 0 4px 0', fontSize: '14px' }}>{t('quickQuota')}</h4>
-            <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>{t('quickQuotaHint')}</p>
-          </div>
-          <input
-            type="checkbox"
-            checked={status?.preferences.quickQuotaVisible ?? true}
-            onChange={toggleQuickQuota}
-            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-          />
-        </div>
+function Section({ title, aside, children }: { title: string; aside?: React.ReactNode; children: React.ReactNode }): React.JSX.Element {
+  return (
+    <section className="dsh-gemini-group">
+      <div className="dsh-gemini-grouphead">
+        <h3>{title}</h3>
+        {aside}
       </div>
+      {children}
+    </section>
+  )
+}
+
+function Button({ primary = false, disabled, onClick, children }: { primary?: boolean; disabled?: boolean; onClick: () => void | Promise<void>; children: React.ReactNode }): React.JSX.Element {
+  return (
+    <button className={`dsh-gemini-button${primary ? ' dsh-gemini-button-primary' : ''}`} type="button" disabled={disabled} onClick={() => void onClick()}>
+      {children}
+    </button>
+  )
+}
+
+function InfoRow({ label, value }: { label: string; value: string }): React.JSX.Element {
+  return (
+    <div className="dsh-gemini-row">
+      <span className="dsh-gemini-label">{label}</span>
+      <span className="dsh-gemini-value">{value}</span>
     </div>
   )
+}
+
+function Skeleton({ label }: { label: string }): React.JSX.Element {
+  return (
+    <div className="dsh-gemini-skeleton" role="status" aria-label={label}>
+      <span />
+      <span />
+    </div>
+  )
+}
+
+function storageLabel(storage: CredentialStorageDto | undefined, t: Translate): string {
+  if (!storage || !storage.available) return t('storageUnavailable')
+  if (storage.kind === 'windows-dpapi') return t('storageWindows')
+  if (storage.kind === 'macos-keychain') return t('storageMacKeychain')
+  if (storage.kind === 'linux-file') return t('storageLinuxFile')
+  if (storage.kind === 'memory') return t('storageMemory')
+  return t('storageUnavailable')
+}
+
+function storageNotice(storage: CredentialStorageDto | undefined, t: Translate): string {
+  if (!storage || !storage.available) return t('securityUnavailable')
+  if (storage.kind === 'windows-dpapi') return t('securityWindows')
+  if (storage.kind === 'macos-keychain') return t('securityMacKeychain')
+  if (storage.kind === 'linux-file') return t('securityLinuxFile')
+  if (storage.kind === 'memory') return t('securityMemory')
+  return t('securityUnavailable')
+}
+
+function formatBucketName(rawId: string, rawName?: string): string {
+  if (rawName && !rawName.includes('_') && !rawName.includes('-tiered') && !rawName.includes('-high')) return rawName
+  if (rawId === 'gemini-2.5-pro') return 'Gemini 2.5 Pro'
+  if (rawId === 'gemini-2.5-flash') return 'Gemini 2.5 Flash'
+  if (rawId === 'gemini-2.5-flash-lite') return 'Gemini 2.5 Flash-Lite'
+  if (rawId === 'gemini-3.7-flash') return 'Gemini 3.7 Flash'
+  if (rawId === 'gemini-3.7-flash-thinking' || rawId === 'gemini-3.7-flash-high') return 'Gemini 3.7 Flash (Thinking)'
+  if (rawId === 'gemini-3.1-pro') return 'Gemini 3.1 Pro'
+  if (rawId === 'gemini-3.1-flash-lite') return 'Gemini 3.1 Flash Lite'
+  if (rawId === 'gemini-3.7-flash-tiered') return 'Gemini 3.7 Flash (Tiered)'
+  if (rawId === 'gemini-3.6-flash-tiered') return 'Gemini 3.6 Flash (Tiered)'
+  return rawId
+    .replace(/^gemini-/, 'Gemini ')
+    .replace(/-tiered$/, ' (Tiered)')
+    .replace(/-high$/, ' (High)')
+    .replace(/-/g, ' ')
+}
+
+function formatRelativeReset(timestampMs: number | null): string {
+  if (!timestampMs) return '—'
+  const diff = timestampMs - Date.now()
+  const dateStr = new Date(timestampMs).toLocaleString()
+  if (diff <= 0) return `${dateStr} (已重置)`
+  const mins = Math.round(diff / 60_000)
+  if (mins < 60) return `${dateStr} (${mins}分钟后)`
+  const hours = Math.floor(mins / 60)
+  const remainingMins = mins % 60
+  return `${dateStr} (${hours}小时${remainingMins > 0 ? `${remainingMins}分钟` : ''}后)`
+}
+
+function formatDate(ms: number | undefined): string {
+  if (ms === undefined) return '—'
+  return new Date(ms).toLocaleString()
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
