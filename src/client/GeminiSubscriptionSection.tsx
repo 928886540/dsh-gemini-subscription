@@ -16,6 +16,7 @@ import {
 } from '../shared/model-catalog.ts'
 import { GeminiSubscriptionApi, parseLoginEvent } from './api.ts'
 import { NS } from './locales.ts'
+import { formatWindowBadge, formatWindowLabel } from './quota.ts'
 
 type Props = PropsRuntime<'settings.section'> & PropsLocale<typeof NS>
 type BusyAction = 'login' | 'token' | 'quota' | 'test' | 'logout' | 'preferences' | null
@@ -389,17 +390,14 @@ export function GeminiSubscriptionSection({ t }: Props): React.JSX.Element {
                     {group.buckets.map((bucket) => {
                       const level = bucket.remainingPercent <= 10 ? 'danger' : bucket.remainingPercent <= 20 ? 'warning' : 'normal'
                       const resetText = formatRelativeReset(bucket.resetsAt)
-                      const bucketLabel = bucket.displayName.toLowerCase().includes('weekly')
-                        ? '周限额剩余'
-                        : (bucket.displayName.toLowerCase().includes('5h') || bucket.displayName.toLowerCase().includes('five'))
-                          ? '5小时限额'
-                          : bucket.displayName
+                      const bucketLabel = formatWindowLabel(bucket)
+                      const badgeText = formatWindowBadge(bucket)
 
                       return (
                         <div key={bucket.bucketId} className="agy-quota-track">
                           <div className="agy-track-header">
                             <span className="agy-track-title">
-                              <span>⏱️</span> {bucketLabel}
+                              <span className="agy-track-badge">{badgeText}</span> {bucketLabel}
                             </span>
                             <span className={`agy-track-pct ${level}`}>
                               {bucket.remainingPercent}%

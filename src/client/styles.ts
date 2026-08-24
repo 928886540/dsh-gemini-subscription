@@ -313,7 +313,7 @@ const CSS_TEXT = `
 
 .agy-quota-columns {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 16px;
 }
 
@@ -321,6 +321,21 @@ const CSS_TEXT = `
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.agy-track-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  color: #c084fc;
+  background: rgba(168, 85, 247, 0.12);
+  border: 1px solid rgba(168, 85, 247, 0.28);
+  border-radius: 4px;
+  padding: 1px 5px;
+  line-height: 1.2;
 }
 
 .agy-track-header {

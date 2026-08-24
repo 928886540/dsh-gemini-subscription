@@ -163,5 +163,124 @@ describe('Usage Service', () => {
     expect(res.ok).toBe(true)
     expect(res.latencyMs).toBeGreaterThanOrEqual(0)
   })
+
+  it('strictly parses only 7D bucket when upstream returns only weekly (no fake 5H)', () => {
+    const rawData = {
+      groups: [
+        {
+          displayName: 'Claude and GPT models',
+          buckets: [
+            {
+              bucketId: '3p-weekly',
+              displayName: 'Weekly Limit Remaining',
+              window: 'weekly',
+              remainingFraction: 0.8441,
+              resetTime: '2026-08-27T13:35:49Z',
+            },
+          ],
+        },
+      ],
+    }
+
+    const groups = parseQuotaGroups(rawData)
+    expect(groups.length).toBe(1)
+    expect(groups[0].buckets.length).toBe(1)
+    expect(groups[0].buckets[0].bucketId).toBe('3p-weekly')
+    expect(groups[0].buckets[0].window).toBe('weekly')
+    expect(groups[0].buckets[0].remainingPercent).toBe(84.41)
+  })
+
+  it('strictly parses only 5H bucket when upstream returns only 5h (no fake weekly)', () => {
+    const rawData = {
+      groups: [
+        {
+          displayName: 'Gemini Models',
+          buckets: [
+            {
+              bucketId: 'gemini-5h',
+              displayName: 'Five Hour Limit Remaining',
+              window: '5h',
+              remainingFraction: 0.479,
+              resetTime: '2026-08-24T12:30:44Z',
+            },
+          ],
+        },
+      ],
+    }
+
+    const groups = parseQuotaGroups(rawData)
+    expect(groups.length).toBe(1)
+    expect(groups[0].buckets.length).toBe(1)
+    expect(groups[0].buckets[0].bucketId).toBe('gemini-5h')
+    expect(groups[0].buckets[0].window).toBe('5h')
+    expect(groups[0].buckets[0].remainingPercent).toBe(47.9)
+  })
+
+  it('handles asymmetric bucket counts between Gemini and Claude groups', () => {
+    const rawData = {
+      groups: [
+        {
+          displayName: 'Gemini Models',
+          buckets: [
+            { bucketId: 'gemini-weekly', window: 'weekly', remainingFraction: 0.7 },
+            { bucketId: 'gemini-5h', window: '5h', remainingFraction: 0.5 },
+          ],
+        },
+        {
+          displayName: 'Claude and GPT models',
+          buckets: [
+            { bucketId: '3p-weekly', window: 'weekly', remainingFraction: 0.9 },
+          ],
+        },
+      ],
+    }
+
+    const groups = parseQuotaGroups(rawData)
+    expect(groups.length).toBe(2)
+    expect(groups[0].buckets.length).toBe(2)
+    expect(groups[1].buckets.length).toBe(1)
+  })
+
+  it('skips groups with empty or invalid buckets (no placeholder creation)', () => {
+    const rawData = {
+      groups: [
+        {
+          displayName: 'Empty Group',
+          buckets: [],
+        },
+        {
+          displayName: 'Invalid Bucket Group',
+          buckets: [{ bucketId: 'corrupted' }],
+        },
+      ],
+    }
+
+    const groups = parseQuotaGroups(rawData)
+    expect(groups.length).toBe(0)
+  })
+
+  it('preserves disabled bucket flags and custom window strings', () => {
+    const rawData = {
+      groups: [
+        {
+          displayName: 'Experimental Group',
+          buckets: [
+            {
+              bucketId: 'exp-daily',
+              displayName: 'Daily Rate Limit',
+              window: 'custom_window_24h',
+              remainingFraction: 0.12,
+              disabled: true,
+            },
+          ],
+        },
+      ],
+    }
+
+    const groups = parseQuotaGroups(rawData)
+    expect(groups.length).toBe(1)
+    expect(groups[0].buckets[0].window).toBe('custom_window_24h')
+    expect(groups[0].buckets[0].disabled).toBe(true)
+  })
 })
 
