@@ -15,7 +15,7 @@ function decodeCredential(bytes: readonly number[]): string {
 
 const gEnv = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env
 
-// Official Antigravity public desktop OAuth client credentials (CPA aligned)
+// Official Antigravity public desktop OAuth client credentials
 export const GOOGLE_OAUTH_CLIENT_ID = gEnv?.DSH_GEMINI_CLIENT_ID
   || decodeCredential([107, 106, 109, 107, 106, 106, 108, 106, 108, 106, 111, 99, 107, 119, 46, 55, 50, 41, 41, 51, 52, 104, 50, 104, 107, 54, 57, 40, 63, 104, 105, 111, 44, 46, 53, 54, 53, 48, 50, 110, 61, 110, 106, 105, 63, 42, 116, 59, 42, 42, 41, 116, 61, 53, 53, 61, 54, 63, 47, 41, 63, 40, 57, 53, 52, 46, 63, 52, 46, 116, 57, 53, 55])
 

@@ -74,7 +74,7 @@ export function GeminiComposerQuota({ api, directory, loadModelDirectory, t }: P
       data-level={level}
       aria-label={quota === null ? t('quickQuotaLoading') : `${t('quickQuotaLabel')}: ${formatPercent(quota.remainingPercent)}`}
     >
-      <span>✨ {t('quickQuotaLabel')}</span>
+      <span>✨ {t('quickQuotaLabel')}</span>{' '}
       <strong>{quota === null ? (loading ? t('quickQuotaLoading') : '—') : formatPercent(quota.remainingPercent)}</strong>
     </span>
   )

@@ -1,12 +1,16 @@
 import { settingsNamespace, type SettingsProvider, type SettingsScope } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import { NS, PROVIDER_ID } from '../compat.ts'
-import { DEFAULT_GEMINI_MODEL_ID } from '../shared/model-catalog.ts'
+import {
+  DEFAULT_GEMINI_MODEL_ID,
+  normalizeContextWindow,
+} from '../shared/model-catalog.ts'
 import {
   DEFAULT_CONTEXT_WINDOW_OVERRIDES,
   DEFAULT_SUBSCRIPTION_PREFERENCES,
 } from '../shared/preferences.ts'
 import type {
+  GeminiContextWindowOverridesDto,
   SubscriptionPreferencesDto,
   SubscriptionPreferencesUpdateDto,
 } from '../shared/contracts.ts'
@@ -32,12 +36,12 @@ export function registerPreferenceStore(settings: SettingsProvider): Subscriptio
     subagentMaxAgents: z.number().step(1).min(1).default(DEFAULT_SUBSCRIPTION_PREFERENCES.subagentMaxAgents),
     defaultThinkingBudget: z.number().step(1).min(0).default(DEFAULT_SUBSCRIPTION_PREFERENCES.defaultThinkingBudget),
     contextWindowOverrides: z.object({
-      'gemini-2.5-pro': z.number().step(1).min(1).default(DEFAULT_CONTEXT_WINDOW_OVERRIDES['gemini-2.5-pro']),
-      'gemini-2.5-flash': z.number().step(1).min(1).default(DEFAULT_CONTEXT_WINDOW_OVERRIDES['gemini-2.5-flash']),
-      'gemini-2.5-flash-lite': z.number().step(1).min(1).default(DEFAULT_CONTEXT_WINDOW_OVERRIDES['gemini-2.5-flash-lite']),
-      'gemini-3.7-flash': z.number().step(1).min(1).default(DEFAULT_CONTEXT_WINDOW_OVERRIDES['gemini-3.7-flash']),
-      'gemini-3.7-flash-thinking': z.number().step(1).min(1).default(DEFAULT_CONTEXT_WINDOW_OVERRIDES['gemini-3.7-flash-thinking']),
-      'gemini-3.1-pro': z.number().step(1).min(1).default(DEFAULT_CONTEXT_WINDOW_OVERRIDES['gemini-3.1-pro']),
+      'gemini-3.7-flash-high': z.number().step(1).min(1).default(DEFAULT_CONTEXT_WINDOW_OVERRIDES['gemini-3.7-flash-high']),
+      'gemini-3.7-flash-medium': z.number().step(1).min(1).default(DEFAULT_CONTEXT_WINDOW_OVERRIDES['gemini-3.7-flash-medium']),
+      'gemini-3.7-flash-low': z.number().step(1).min(1).default(DEFAULT_CONTEXT_WINDOW_OVERRIDES['gemini-3.7-flash-low']),
+      'gemini-3.6-flash-high': z.number().step(1).min(1).default(DEFAULT_CONTEXT_WINDOW_OVERRIDES['gemini-3.6-flash-high']),
+      'gemini-3.1-pro-high': z.number().step(1).min(1).default(DEFAULT_CONTEXT_WINDOW_OVERRIDES['gemini-3.1-pro-high']),
+      'gpt-oss-120b-medium': z.number().step(1).min(1).default(DEFAULT_CONTEXT_WINDOW_OVERRIDES['gpt-oss-120b-medium']),
     }).default(DEFAULT_CONTEXT_WINDOW_OVERRIDES),
   }))
   return new SettingsPreferenceStore(scope)
@@ -47,7 +51,21 @@ class SettingsPreferenceStore implements SubscriptionPreferenceStore {
   constructor(private readonly scope: SettingsScope<PreferenceSettings>) {}
 
   status(): SubscriptionPreferencesDto {
-    return withWritable(this.scope.get())
+    const raw = this.scope.get()
+    const overrides: GeminiContextWindowOverridesDto = {
+      ...DEFAULT_CONTEXT_WINDOW_OVERRIDES,
+      ...raw.contextWindowOverrides,
+    }
+    for (const [key, val] of Object.entries(overrides)) {
+      if (typeof val === 'number') {
+        overrides[key as keyof GeminiContextWindowOverridesDto] = normalizeContextWindow(val)
+      }
+    }
+    return withWritable({
+      ...raw,
+      subagentContextWindow: normalizeContextWindow(raw.subagentContextWindow),
+      contextWindowOverrides: overrides,
+    })
   }
 
   async update(patch: SubscriptionPreferencesUpdateDto): Promise<SubscriptionPreferencesDto> {
@@ -59,15 +77,20 @@ class SettingsPreferenceStore implements SubscriptionPreferenceStore {
     if (patch.subagentProvider !== undefined) normalized.subagentProvider = patch.subagentProvider
     if (patch.subagentModel !== undefined) normalized.subagentModel = patch.subagentModel
     if (patch.subagentReasoningEffort !== undefined) normalized.subagentReasoningEffort = patch.subagentReasoningEffort
-    if (patch.subagentContextWindow !== undefined) normalized.subagentContextWindow = patch.subagentContextWindow
+    if (patch.subagentContextWindow !== undefined) normalized.subagentContextWindow = normalizeContextWindow(patch.subagentContextWindow)
     if (patch.subagentMaxDepth !== undefined) normalized.subagentMaxDepth = patch.subagentMaxDepth
     if (patch.subagentMaxAgents !== undefined) normalized.subagentMaxAgents = patch.subagentMaxAgents
     if (patch.defaultThinkingBudget !== undefined) normalized.defaultThinkingBudget = patch.defaultThinkingBudget
     if (patch.contextWindowOverrides !== undefined) {
-      normalized.contextWindowOverrides = {
+      const mergedOverrides: GeminiContextWindowOverridesDto = {
         ...current.contextWindowOverrides,
-        ...patch.contextWindowOverrides,
       }
+      for (const [k, v] of Object.entries(patch.contextWindowOverrides)) {
+        if (typeof v === 'number' && v > 0) {
+          mergedOverrides[k as keyof GeminiContextWindowOverridesDto] = normalizeContextWindow(v)
+        }
+      }
+      normalized.contextWindowOverrides = mergedOverrides
     }
     await this.scope.update(normalized)
     return this.status()

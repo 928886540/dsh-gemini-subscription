@@ -1,4 +1,4 @@
-import type { LlmModelInfo, LlmResolvedModelInfo, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+import type { LlmModelInfo, LlmResolvedModelInfo } from '@deepseek-ai/dsh-llm'
 import {
   ANTIGRAVITY_ENDPOINTS,
   ANTIGRAVITY_USER_AGENT,
@@ -26,27 +26,25 @@ export interface GeminiModelCatalogEntry {
   quotaInfo?: ModelQuotaInfo
 }
 
+export const ALLOWED_CONTEXT_WINDOWS = [272_000, 512_000, 1_048_576] as const
+export const DEFAULT_CONTEXT_WINDOW = 272_000
+
+export function normalizeContextWindow(val: number): number {
+  if (val >= 1_000_000) return 1_048_576
+  if (val >= 512_000) return 512_000
+  return 272_000
+}
+
 /**
- * Prioritized, curated model catalog for Antigravity (AGY) subscription.
- * Ordered strictly by developer priority:
- * 1. Gemini 3.7 Flash (High / Thinking)
- * 2. Gemini 3.7 Flash
- * 3. Claude Sonnet 3.7 / 4.6 (Thinking)
- * 4. Claude Opus 4.6 (Thinking)
- * 5. Gemini 3.1 Pro (High)
- * 6. Gemini 3.1 Pro
- * 7. Gemini 2.5 Pro
- * 8. Gemini 2.5 Flash
- * 9. Gemini 2.5 Flash-Lite
- * 10. Gemini 3.1 Flash Lite
- * 11. Gemini 3.6 Flash (High)
+ * Official AGY CLI model catalog.
+ * IDs are real model tier names; High/Medium/Low/Thinking are baked into the ID.
  */
 export const GEMINI_MODEL_CATALOG: readonly GeminiModelCatalogEntry[] = [
   {
     id: 'gemini-3.7-flash-high',
-    name: 'Gemini 3.7 Flash (High / Thinking)',
-    description: 'Google 最强深度思考与编码旗舰模型 (1M 上下文，支持超长思维链与高强度推演)',
-    contextWindow: 1_048_576,
+    name: '✨ Gemini 3.7 Flash (High)',
+    description: '旗舰深度思考与编码 (High)',
+    contextWindow: DEFAULT_CONTEXT_WINDOW,
     maxContextWindow: 1_048_576,
     maxOutputTokens: 65_536,
     reasoning: true,
@@ -56,10 +54,36 @@ export const GEMINI_MODEL_CATALOG: readonly GeminiModelCatalogEntry[] = [
     upstreamModel: 'gemini-3.6-flash-high',
   },
   {
-    id: 'gemini-3.7-flash-thinking',
-    name: 'Gemini 3.7 Flash (Thinking)',
-    description: 'Gemini 3.7 Flash 深度思考扩展版',
-    contextWindow: 1_048_576,
+    id: 'gemini-3.7-flash-medium',
+    name: 'Gemini 3.7 Flash (Medium)',
+    description: '混合推理平衡模型 (Med)',
+    contextWindow: DEFAULT_CONTEXT_WINDOW,
+    maxContextWindow: 1_048_576,
+    maxOutputTokens: 65_536,
+    reasoning: true,
+    vision: true,
+    tools: true,
+    defaultThinkingBudget: 8192,
+    upstreamModel: 'gemini-3.6-flash-medium',
+  },
+  {
+    id: 'gemini-3.7-flash-low',
+    name: 'Gemini 3.7 Flash (Low)',
+    description: '极速响应推理模型 (Low)',
+    contextWindow: DEFAULT_CONTEXT_WINDOW,
+    maxContextWindow: 1_048_576,
+    maxOutputTokens: 65_536,
+    reasoning: true,
+    vision: true,
+    tools: true,
+    defaultThinkingBudget: 2048,
+    upstreamModel: 'gemini-3.6-flash-low',
+  },
+  {
+    id: 'gemini-3.6-flash-high',
+    name: 'Gemini 3.6 Flash (High)',
+    description: '3.6 高思维强度推理',
+    contextWindow: DEFAULT_CONTEXT_WINDOW,
     maxContextWindow: 1_048_576,
     maxOutputTokens: 65_536,
     reasoning: true,
@@ -69,25 +93,103 @@ export const GEMINI_MODEL_CATALOG: readonly GeminiModelCatalogEntry[] = [
     upstreamModel: 'gemini-3.6-flash-high',
   },
   {
-    id: 'gemini-3.7-flash',
-    name: 'Gemini 3.7 Flash',
-    description: '新一代混合推理旗舰，兼顾极速响应与高智力 (1M 上下文)',
-    contextWindow: 1_048_576,
+    id: 'gemini-3.6-flash-medium',
+    name: 'Gemini 3.6 Flash (Medium)',
+    description: '3.6 中思维强度',
+    contextWindow: DEFAULT_CONTEXT_WINDOW,
     maxContextWindow: 1_048_576,
     maxOutputTokens: 65_536,
     reasoning: true,
     vision: true,
     tools: true,
-    defaultThinkingBudget: 4096,
+    defaultThinkingBudget: 8192,
+    upstreamModel: 'gemini-3.6-flash-medium',
+  },
+  {
+    id: 'gemini-3.6-flash-low',
+    name: 'Gemini 3.6 Flash (Low)',
+    description: '3.6 低思维极速',
+    contextWindow: DEFAULT_CONTEXT_WINDOW,
+    maxContextWindow: 1_048_576,
+    maxOutputTokens: 65_536,
+    reasoning: true,
+    vision: true,
+    tools: true,
+    defaultThinkingBudget: 2048,
+    upstreamModel: 'gemini-3.6-flash-low',
+  },
+  {
+    id: 'gemini-3.5-flash-high',
+    name: 'Gemini 3.5 Flash (High)',
+    description: '3.5 高思维强度',
+    contextWindow: DEFAULT_CONTEXT_WINDOW,
+    maxContextWindow: 1_048_576,
+    maxOutputTokens: 65_536,
+    reasoning: true,
+    vision: true,
+    tools: true,
+    defaultThinkingBudget: 16384,
     upstreamModel: 'gemini-3.6-flash-high',
+  },
+  {
+    id: 'gemini-3.5-flash-medium',
+    name: 'Gemini 3.5 Flash (Medium)',
+    description: '3.5 中思维强度',
+    contextWindow: DEFAULT_CONTEXT_WINDOW,
+    maxContextWindow: 1_048_576,
+    maxOutputTokens: 65_536,
+    reasoning: true,
+    vision: true,
+    tools: true,
+    defaultThinkingBudget: 8192,
+    upstreamModel: 'gemini-3.6-flash-medium',
+  },
+  {
+    id: 'gemini-3.5-flash-low',
+    name: 'Gemini 3.5 Flash (Low)',
+    description: '3.5 低思维极速',
+    contextWindow: DEFAULT_CONTEXT_WINDOW,
+    maxContextWindow: 1_048_576,
+    maxOutputTokens: 65_536,
+    reasoning: true,
+    vision: true,
+    tools: true,
+    defaultThinkingBudget: 2048,
+    upstreamModel: 'gemini-3.5-flash-low',
+  },
+  {
+    id: 'gemini-3.1-pro-high',
+    name: 'Gemini 3.1 Pro (High)',
+    description: '3.1 Pro 旗舰推演',
+    contextWindow: DEFAULT_CONTEXT_WINDOW,
+    maxContextWindow: 1_048_576,
+    maxOutputTokens: 65_536,
+    reasoning: true,
+    vision: true,
+    tools: true,
+    defaultThinkingBudget: 16384,
+    upstreamModel: 'gemini-3.1-pro-low',
+  },
+  {
+    id: 'gemini-3.1-pro-low',
+    name: 'Gemini 3.1 Pro (Low)',
+    description: '3.1 Pro 轻量架构',
+    contextWindow: DEFAULT_CONTEXT_WINDOW,
+    maxContextWindow: 1_048_576,
+    maxOutputTokens: 65_536,
+    reasoning: true,
+    vision: true,
+    tools: true,
+    defaultThinkingBudget: 2048,
+    upstreamModel: 'gemini-3.1-pro-low',
   },
   {
     id: 'claude-sonnet-4-6',
-    name: 'Claude Sonnet 3.7 / 4.6 (Thinking)',
-    description: 'Antigravity 专属 Claude Sonnet，具备深度思考与顶级代码能力',
+    name: '🔥 Claude Sonnet 4.6 (Thinking)',
+    description: 'Claude 4.6 顶级代码与思考',
     contextWindow: 200_000,
     maxContextWindow: 200_000,
-    maxOutputTokens: 65_536,
+    maxOutputTokens: 64_000,
     reasoning: true,
     vision: true,
     tools: true,
@@ -96,11 +198,11 @@ export const GEMINI_MODEL_CATALOG: readonly GeminiModelCatalogEntry[] = [
   },
   {
     id: 'claude-opus-4-6-thinking',
-    name: 'Claude Opus 4.6 (Thinking)',
-    description: 'Antigravity 专属 Claude Opus 深度思考模型',
+    name: '🔥 Claude Opus 4.6 (Thinking)',
+    description: 'Claude 4.6 深度推演旗舰',
     contextWindow: 200_000,
     maxContextWindow: 200_000,
-    maxOutputTokens: 65_536,
+    maxOutputTokens: 64_000,
     reasoning: true,
     vision: true,
     tools: true,
@@ -108,95 +210,17 @@ export const GEMINI_MODEL_CATALOG: readonly GeminiModelCatalogEntry[] = [
     upstreamModel: 'claude-opus-4-6-thinking',
   },
   {
-    id: 'gemini-3.1-pro-high',
-    name: 'Gemini 3.1 Pro (High)',
-    description: 'Gemini 3.1 架构旗舰版，百万上下文与深度推演',
-    contextWindow: 1_048_576,
+    id: 'gpt-oss-120b-medium',
+    name: 'GPT-OSS 120B (Medium)',
+    description: '开源 120B 旗舰',
+    contextWindow: DEFAULT_CONTEXT_WINDOW,
     maxContextWindow: 1_048_576,
     maxOutputTokens: 65_536,
     reasoning: true,
     vision: true,
     tools: true,
     defaultThinkingBudget: 8192,
-    upstreamModel: 'gemini-3.1-pro-low',
-  },
-  {
-    id: 'gemini-3.1-pro',
-    name: 'Gemini 3.1 Pro',
-    description: 'Gemini 3.1 Pro 旗舰版 (百万上下文)',
-    contextWindow: 1_048_576,
-    maxContextWindow: 1_048_576,
-    maxOutputTokens: 65_536,
-    reasoning: true,
-    vision: true,
-    tools: true,
-    defaultThinkingBudget: 8192,
-    upstreamModel: 'gemini-3.1-pro-low',
-  },
-  {
-    id: 'gemini-2.5-pro',
-    name: 'Gemini 2.5 Pro',
-    description: '200万超大上下文旗舰，擅长全代码库分析与复杂多模态',
-    contextWindow: 1_048_576,
-    maxContextWindow: 2_097_152,
-    maxOutputTokens: 65_536,
-    reasoning: true,
-    vision: true,
-    tools: true,
-    defaultThinkingBudget: 8192,
-    upstreamModel: 'gemini-2.5-pro',
-  },
-  {
-    id: 'gemini-2.5-flash',
-    name: 'Gemini 2.5 Flash',
-    description: '百万上下文极速多模态模型，高并发低延迟',
-    contextWindow: 1_048_576,
-    maxContextWindow: 1_048_576,
-    maxOutputTokens: 65_536,
-    reasoning: true,
-    vision: true,
-    tools: true,
-    defaultThinkingBudget: 2048,
-    upstreamModel: 'gemini-2.5-flash',
-  },
-  {
-    id: 'gemini-2.5-flash-lite',
-    name: 'Gemini 2.5 Flash-Lite',
-    description: '极速轻量模型，适用于高频快速问答与辅助任务',
-    contextWindow: 1_048_576,
-    maxContextWindow: 1_048_576,
-    maxOutputTokens: 65_536,
-    reasoning: true,
-    vision: true,
-    tools: true,
-    defaultThinkingBudget: 1024,
-    upstreamModel: 'gemini-2.5-flash-lite',
-  },
-  {
-    id: 'gemini-3.1-flash-lite',
-    name: 'Gemini 3.1 Flash Lite',
-    description: 'Gemini 3.1 架构极速轻量模型',
-    contextWindow: 1_048_576,
-    maxContextWindow: 1_048_576,
-    maxOutputTokens: 65_536,
-    reasoning: true,
-    vision: true,
-    tools: true,
-    defaultThinkingBudget: 1024,
-    upstreamModel: 'gemini-3.1-flash-lite',
-  },
-  {
-    id: 'gemini-3.6-flash-high',
-    name: 'Gemini 3.6 Flash (High)',
-    description: 'Gemini 3.6 高思维强度推理模型',
-    contextWindow: 1_048_576,
-    maxContextWindow: 1_048_576,
-    maxOutputTokens: 65_536,
-    reasoning: true,
-    vision: true,
-    tools: true,
-    defaultThinkingBudget: 4096,
-    upstreamModel: 'gemini-3.6-flash-high',
+    upstreamModel: 'gpt-oss-120b-medium',
   },
 ] as const
 
@@ -204,18 +228,19 @@ export const DEFAULT_GEMINI_MODEL_ID = 'gemini-3.7-flash-high'
 
 const PRIORITY_ORDER: readonly string[] = [
   'gemini-3.7-flash-high',
-  'gemini-3.7-flash-thinking',
-  'gemini-3.7-flash',
+  'gemini-3.7-flash-medium',
+  'gemini-3.7-flash-low',
   'claude-sonnet-4-6',
-  'claude-3-7-sonnet',
   'claude-opus-4-6-thinking',
   'gemini-3.1-pro-high',
-  'gemini-3.1-pro',
-  'gemini-2.5-pro',
-  'gemini-2.5-flash',
-  'gemini-2.5-flash-lite',
-  'gemini-3.1-flash-lite',
+  'gemini-3.1-pro-low',
+  'gpt-oss-120b-medium',
   'gemini-3.6-flash-high',
+  'gemini-3.6-flash-medium',
+  'gemini-3.6-flash-low',
+  'gemini-3.5-flash-high',
+  'gemini-3.5-flash-medium',
+  'gemini-3.5-flash-low',
 ]
 
 function getPriorityIndex(id: string): number {
@@ -257,28 +282,42 @@ export function resolveGeminiCatalogEntry(modelId: string): GeminiModelCatalogEn
   const catalog = getEffectiveModelCatalog()
   const normalized = modelId.trim().toLowerCase()
 
-  // 1. Direct or upstream match
-  const matched = catalog.find((entry) =>
-    entry.id.toLowerCase() === normalized ||
-    entry.upstreamModel.toLowerCase() === normalized
-  )
-  if (matched !== undefined) return matched
+  // 1. Direct exact ID match (Must be first so resolved.id === requested modelId!)
+  const exact = catalog.find((entry) => entry.id.toLowerCase() === normalized)
+  if (exact !== undefined) return exact
+
+  // 2. Upstream model match
+  const upstreamMatch = catalog.find((entry) => entry.upstreamModel.toLowerCase() === normalized)
+  if (upstreamMatch !== undefined) return upstreamMatch
 
   // 2. Friendly alias normalization
-  if (normalized === '3.7-flash-high' || normalized === 'gemini-3.7-flash-high' || normalized === '3.7-flash-thinking') {
+  if (normalized.includes('3.7') && normalized.includes('flash')) {
+    if (normalized.includes('low')) return resolveGeminiCatalogEntry('gemini-3.7-flash-low')
+    if (normalized.includes('medium')) return resolveGeminiCatalogEntry('gemini-3.7-flash-medium')
     return resolveGeminiCatalogEntry('gemini-3.7-flash-high')
   }
-  if (normalized === '3.7-flash' || normalized === 'gemini-3.7-flash') {
-    return resolveGeminiCatalogEntry('gemini-3.7-flash')
+  if (normalized.includes('3.6') && normalized.includes('flash')) {
+    if (normalized.includes('low')) return resolveGeminiCatalogEntry('gemini-3.6-flash-low')
+    if (normalized.includes('medium')) return resolveGeminiCatalogEntry('gemini-3.6-flash-medium')
+    return resolveGeminiCatalogEntry('gemini-3.6-flash-high')
   }
-  if (normalized === 'claude-3-7-sonnet' || normalized === 'claude-3.7-sonnet' || normalized === 'claude-sonnet') {
+  if (normalized.includes('3.5') && normalized.includes('flash')) {
+    if (normalized.includes('low')) return resolveGeminiCatalogEntry('gemini-3.5-flash-low')
+    if (normalized.includes('medium')) return resolveGeminiCatalogEntry('gemini-3.5-flash-medium')
+    return resolveGeminiCatalogEntry('gemini-3.5-flash-high')
+  }
+  if (normalized.includes('3.1') && normalized.includes('pro')) {
+    if (normalized.includes('low')) return resolveGeminiCatalogEntry('gemini-3.1-pro-low')
+    return resolveGeminiCatalogEntry('gemini-3.1-pro-high')
+  }
+  if (normalized.includes('sonnet') || (normalized.includes('claude') && !normalized.includes('opus'))) {
     return resolveGeminiCatalogEntry('claude-sonnet-4-6')
   }
-  if (normalized === 'claude-opus' || normalized === 'claude-opus-4-6') {
+  if (normalized.includes('opus')) {
     return resolveGeminiCatalogEntry('claude-opus-4-6-thinking')
   }
-  if (normalized === '3.1-pro' || normalized === 'gemini-3.1-pro') {
-    return resolveGeminiCatalogEntry('gemini-3.1-pro-high')
+  if (normalized.includes('gpt-oss') || normalized.includes('120b')) {
+    return resolveGeminiCatalogEntry('gpt-oss-120b-medium')
   }
 
   // Fallback dynamic entry
@@ -286,13 +325,13 @@ export function resolveGeminiCatalogEntry(modelId: string): GeminiModelCatalogEn
     id: modelId,
     name: modelId,
     description: `Antigravity model ${modelId}`,
-    contextWindow: 1_048_576,
+    contextWindow: DEFAULT_CONTEXT_WINDOW,
     maxContextWindow: 1_048_576,
     maxOutputTokens: 65_536,
     reasoning: true,
     vision: true,
     tools: true,
-    defaultThinkingBudget: 4096,
+    defaultThinkingBudget: 8192,
     upstreamModel: modelId,
   }
 }
@@ -304,7 +343,9 @@ export function resolveGeminiModel(
   const entry = resolveGeminiCatalogEntry(modelId)
   const overrideKey = entry.id as keyof GeminiContextWindowOverridesDto
   const customWindow = overrides?.[overrideKey]
-  const contextWindow = typeof customWindow === 'number' && customWindow > 0 ? customWindow : entry.contextWindow
+  const contextWindow = typeof customWindow === 'number' && customWindow > 0
+    ? normalizeContextWindow(customWindow)
+    : entry.contextWindow
 
   return {
     provider: PROVIDER_ID,
@@ -314,14 +355,8 @@ export function resolveGeminiModel(
     inputModalities: entry.vision ? ['text', 'image'] as const : ['text'] as const,
     context: { contextWindow },
     defaultMaxTokens: entry.maxOutputTokens,
-    reasoning: entry.reasoning ? {
-      efforts: [
-        { id: 'low' as ReasoningEffortId, name: 'Low' },
-        { id: 'medium' as ReasoningEffortId, name: 'Medium' },
-        { id: 'high' as ReasoningEffortId, name: 'High' },
-      ],
-      defaultEffort: 'medium' as ReasoningEffortId,
-    } : undefined,
+    // High/Low/Medium/Thinking 模型本身已在 ID 中确定档位，不额外暴露 effort 切换
+    reasoning: undefined,
   }
 }
 
@@ -361,20 +396,27 @@ export async function fetchDynamicAntigravityModels(
       const data = await res.json() as { models?: Record<string, RawAvailableModelInfo> }
       if (!data || typeof data.models !== 'object') continue
 
-      const models: GeminiModelCatalogEntry[] = []
-
+      const upstreamMap = new Map<string, RawAvailableModelInfo>()
       for (const [rawId, info] of Object.entries(data.models)) {
         const id = rawId.trim()
-        if (!id || isIgnoredModel(id)) continue
+        if (id && !isIgnoredModel(id)) {
+          upstreamMap.set(id, info)
+        }
+      }
+
+      // Merge on top of static base so we never lose gemini-3.7-*
+      const mergedList: GeminiModelCatalogEntry[] = GEMINI_MODEL_CATALOG.map((baseEntry) => {
+        const upstreamInfo = upstreamMap.get(baseEntry.upstreamModel) || upstreamMap.get(baseEntry.id)
+        if (!upstreamInfo) return { ...baseEntry }
 
         let quotaInfo: ModelQuotaInfo | undefined
-        const rawRemaining = typeof info.quotaInfo?.remainingFraction === 'number'
-          ? info.quotaInfo.remainingFraction
-          : typeof info.remainingFraction === 'number'
-            ? info.remainingFraction
+        const rawRemaining = typeof upstreamInfo.quotaInfo?.remainingFraction === 'number'
+          ? upstreamInfo.quotaInfo.remainingFraction
+          : typeof upstreamInfo.remainingFraction === 'number'
+            ? upstreamInfo.remainingFraction
             : undefined
 
-        const rawResetTime = info.quotaInfo?.resetTime || info.resetTime
+        const rawResetTime = upstreamInfo.quotaInfo?.resetTime || upstreamInfo.resetTime
 
         if (typeof rawRemaining === 'number' && Number.isFinite(rawRemaining)) {
           quotaInfo = {
@@ -383,28 +425,13 @@ export async function fetchDynamicAntigravityModels(
           }
         }
 
-        const known = GEMINI_MODEL_CATALOG.find(k => k.id === id || k.upstreamModel === id)
-        const displayName = info.displayName || known?.name || id
-        const maxContext = info.maxTokens || known?.maxContextWindow || 1_048_576
-        const maxOut = info.maxOutputTokens || known?.maxOutputTokens || 65_536
+        return {
+          ...baseEntry,
+          quotaInfo: quotaInfo ?? baseEntry.quotaInfo,
+        }
+      })
 
-        models.push({
-          id,
-          name: displayName,
-          description: known?.description || `${displayName} from Google Antigravity`,
-          contextWindow: known?.contextWindow || Math.min(maxContext, 1_048_576),
-          maxContextWindow: maxContext,
-          maxOutputTokens: maxOut,
-          reasoning: true,
-          vision: true,
-          tools: true,
-          defaultThinkingBudget: known?.defaultThinkingBudget ?? 4096,
-          upstreamModel: id,
-          quotaInfo,
-        })
-      }
-
-      const sortedModels = models.sort(
+      const sortedModels = mergedList.sort(
         (a, b) => getPriorityIndex(a.id) - getPriorityIndex(b.id)
       )
 

@@ -3,16 +3,20 @@ import type {
   SubscriptionPreferencesDto,
   SubscriptionPreferencesUpdateDto,
 } from './contracts.ts'
-import { DEFAULT_GEMINI_MODEL_ID } from './model-catalog.ts'
+import {
+  DEFAULT_CONTEXT_WINDOW,
+  DEFAULT_GEMINI_MODEL_ID,
+  normalizeContextWindow,
+} from './model-catalog.ts'
 import { PROVIDER_ID } from '../compat.ts'
 
 export const DEFAULT_CONTEXT_WINDOW_OVERRIDES: GeminiContextWindowOverridesDto = {
-  'gemini-2.5-pro': 1_048_576,
-  'gemini-2.5-flash': 1_048_576,
-  'gemini-2.5-flash-lite': 1_048_576,
-  'gemini-3.7-flash': 1_048_576,
-  'gemini-3.7-flash-thinking': 1_048_576,
-  'gemini-3.1-pro': 1_048_576,
+  'gemini-3.7-flash-high': DEFAULT_CONTEXT_WINDOW,
+  'gemini-3.7-flash-medium': DEFAULT_CONTEXT_WINDOW,
+  'gemini-3.7-flash-low': DEFAULT_CONTEXT_WINDOW,
+  'gemini-3.6-flash-high': DEFAULT_CONTEXT_WINDOW,
+  'gemini-3.1-pro-high': DEFAULT_CONTEXT_WINDOW,
+  'gpt-oss-120b-medium': DEFAULT_CONTEXT_WINDOW,
 }
 
 export const DEFAULT_SUBSCRIPTION_PREFERENCES: SubscriptionPreferencesDto = {
@@ -21,12 +25,12 @@ export const DEFAULT_SUBSCRIPTION_PREFERENCES: SubscriptionPreferencesDto = {
   subagentEnabled: true,
   subagentProvider: PROVIDER_ID,
   subagentModel: DEFAULT_GEMINI_MODEL_ID,
-  subagentReasoningEffort: 'medium',
-  subagentContextWindow: 1_048_576,
+  subagentReasoningEffort: null,
+  subagentContextWindow: DEFAULT_CONTEXT_WINDOW,
   subagentMaxDepth: 4,
   subagentMaxAgents: 8,
   contextWindowOverrides: DEFAULT_CONTEXT_WINDOW_OVERRIDES,
-  defaultThinkingBudget: 8192,
+  defaultThinkingBudget: 16384,
   writable: true,
 }
 
@@ -34,6 +38,18 @@ export function mergePreferences(
   current: SubscriptionPreferencesDto,
   update: SubscriptionPreferencesUpdateDto,
 ): SubscriptionPreferencesDto {
+  const normalizedOverrides: GeminiContextWindowOverridesDto = {
+    ...current.contextWindowOverrides,
+  }
+
+  if (update.contextWindowOverrides) {
+    for (const [key, val] of Object.entries(update.contextWindowOverrides)) {
+      if (typeof val === 'number' && val > 0) {
+        normalizedOverrides[key as keyof GeminiContextWindowOverridesDto] = normalizeContextWindow(val)
+      }
+    }
+  }
+
   return {
     ...current,
     quickQuotaVisible: update.quickQuotaVisible ?? current.quickQuotaVisible,
@@ -44,13 +60,12 @@ export function mergePreferences(
     subagentReasoningEffort: update.subagentReasoningEffort !== undefined
       ? update.subagentReasoningEffort
       : current.subagentReasoningEffort,
-    subagentContextWindow: update.subagentContextWindow ?? current.subagentContextWindow,
+    subagentContextWindow: update.subagentContextWindow !== undefined
+      ? normalizeContextWindow(update.subagentContextWindow)
+      : current.subagentContextWindow,
     subagentMaxDepth: update.subagentMaxDepth ?? current.subagentMaxDepth,
     subagentMaxAgents: update.subagentMaxAgents ?? current.subagentMaxAgents,
     defaultThinkingBudget: update.defaultThinkingBudget ?? current.defaultThinkingBudget,
-    contextWindowOverrides: {
-      ...current.contextWindowOverrides,
-      ...update.contextWindowOverrides,
-    },
+    contextWindowOverrides: normalizedOverrides,
   }
 }

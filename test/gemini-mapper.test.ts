@@ -23,12 +23,12 @@ describe('Gemini Mapper', () => {
         { type: 'reasoning', text: 'Let me think.' },
         { type: 'text', text: 'Thinking...' },
       ],
-      source: { provider: PROVIDER_ID, model: 'gemini-2.5-pro' },
+      source: { provider: PROVIDER_ID, model: 'gemini-3.7-flash-high' },
     })
 
     const options: GenerateOptions = {
       provider: PROVIDER_ID,
-      model: 'gemini-2.5-pro',
+      model: 'gemini-3.7-flash-high',
       system: 'You are an AI assistant.',
       messages: [userMsg, assistantMsg],
       tools: [
@@ -43,8 +43,9 @@ describe('Gemini Mapper', () => {
     }
 
     const payload = await mapGenerateOptionsToGeminiPayload(options, 'test-project')
-    expect(payload.model).toBe('gemini-2.5-pro')
+    expect(payload.model).toBe('gemini-3.6-flash-high')
     expect(payload.project).toBe('test-project')
+    expect(payload.request.generationConfig?.thinkingConfig?.thinkingBudget).toBe(16384)
     expect(payload.request.systemInstruction?.parts[0].text).toBe('You are an AI assistant.')
     expect(payload.request.contents.length).toBe(2)
     expect(payload.request.contents[0].role).toBe('user')
@@ -78,5 +79,41 @@ describe('Gemini Mapper', () => {
     expect(chunks.some((c) => c.type === 'tool-call-delta' && c.name === 'search')).toBe(true)
     expect(chunks.some((c) => c.type === 'usage' && c.usage.inputTokens === 10 && c.usage.reasoningTokens === 5)).toBe(true)
     expect(chunks.some((c) => c.type === 'finish' && c.reason.kind === 'stop')).toBe(true)
+  })
+
+  it('parses Claude 4.6 SSE stream cleanly without undefined fields in usage chunk', async () => {
+    const claudeSseLines = [
+      'data: {"response": {"candidates": [{"content": {"role": "model","parts": [{"thought": true,"thoughtSignature": "SIG123","text": ""}]}}],"usageMetadata": {"promptTokenCount": 37,"candidatesTokenCount": 3,"totalTokenCount": 40}}}\n\n',
+      'data: {"response": {"candidates": [{"content": {"role": "model","parts": [{"thought": true,"text": "Claude thinking"}]}}],"usageMetadata": {"promptTokenCount": 37,"candidatesTokenCount": 3,"totalTokenCount": 40}}}\n\n',
+      'data: {"response": {"candidates": [{"content": {"role": "model","parts": [{"text": "Hello from Claude"}]},"finishReason": "STOP"}],"usageMetadata": {"promptTokenCount": 37,"candidatesTokenCount": 47,"totalTokenCount": 84}}}\n\n',
+    ]
+
+    async function* makeStream() {
+      for (const line of claudeSseLines) {
+        yield new TextEncoder().encode(line)
+      }
+    }
+
+    const chunks = []
+    for await (const chunk of parseGeminiStream(makeStream())) {
+      chunks.push(chunk)
+      // Verify strict JSON serializability (no undefined keys)
+      for (const [k, v] of Object.entries(chunk)) {
+        expect(v).not.toBeUndefined()
+        if (typeof v === 'object' && v !== null) {
+          for (const [subK, subV] of Object.entries(v)) {
+            expect(subV).not.toBeUndefined()
+          }
+        }
+      }
+    }
+
+    const usageChunk = chunks.find((c) => c.type === 'usage')
+    expect(usageChunk).toBeDefined()
+    if (usageChunk && usageChunk.type === 'usage') {
+      expect(usageChunk.usage.inputTokens).toBe(37)
+      expect(usageChunk.usage.outputTokens).toBe(3)
+      expect(Object.prototype.hasOwnProperty.call(usageChunk.usage, 'reasoningTokens')).toBe(false)
+    }
   })
 })

@@ -253,7 +253,7 @@ const CSS_TEXT = `
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 
-/* CPA Live Quota Matrix */
+/* AGY Live Quota Matrix */
 .agy-quota-matrix {
   display: flex;
   flex-direction: column;
@@ -419,6 +419,8 @@ const CSS_TEXT = `
   padding: 1px 6px;
   border-radius: 4px;
   font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
   background: rgba(99, 102, 241, 0.15);
   color: #818cf8;
   border: 1px solid rgba(99, 102, 241, 0.25);
@@ -432,6 +434,39 @@ const CSS_TEXT = `
   background: rgba(217, 119, 6, 0.15);
   color: #fb923c;
   border-color: rgba(217, 119, 6, 0.3);
+}
+.agy-model-badge.pro {
+  background: rgba(14, 165, 233, 0.15);
+  color: #38bdf8;
+  border-color: rgba(14, 165, 233, 0.3);
+}
+
+.dsh-gemini-composer-quota {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-secondary, #94a3b8);
+  user-select: none;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.dsh-gemini-composer-quota span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.dsh-gemini-composer-quota strong {
+  font-weight: 700;
+  color: #38bdf8;
+}
+.dsh-gemini-composer-quota[data-level='warning'] strong {
+  color: #fbbf24;
+}
+.dsh-gemini-composer-quota[data-level='danger'] strong {
+  color: #f87171;
 }
 .agy-model-desc {
   font-size: 11px;
@@ -472,27 +507,27 @@ const CSS_TEXT = `
   align-items: center;
   gap: 8px;
 }
-.agy-context-input {
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.12));
+.agy-context-select {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.15));
   border-radius: 7px;
   color: #38bdf8;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 13px;
   font-weight: 600;
-  text-align: right;
-  padding: 6px 10px;
-  width: 90px;
+  padding: 6px 12px;
+  min-width: 120px;
+  cursor: pointer;
+  outline: none;
   transition: all 0.15s ease;
 }
-.agy-context-input:focus {
-  outline: 2px solid #38bdf8;
-  border-color: transparent;
+.agy-context-select:focus {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 1px #38bdf8;
 }
-.agy-context-unit {
-  font-size: 11px;
-  color: var(--dsw-alias-label-secondary, #94a3b8);
-  width: 44px;
+.agy-context-select option {
+  background: #1e293b;
+  color: #f1f5f9;
 }
 
 .agy-toggle-row {
@@ -518,10 +553,44 @@ const CSS_TEXT = `
 }
 
 /* Responsive */
-@media (max-width: 620px) {
+@media (max-width: 640px) {
   .agy-quota-columns {
     grid-template-columns: 1fr;
   }
+  .agy-models-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 醒目高亮 Gemini 3.7 Flash (High) 和 Claude 4.6 系列 */
+button[title*="3.7 Flash (High)"] {
+  background: rgba(245, 158, 11, 0.1) !important;
+  border-left: 3px solid #f59e0b !important;
+}
+button[title*="3.7 Flash (High)"]:hover {
+  background: rgba(245, 158, 11, 0.18) !important;
+}
+button[title*="3.7 Flash (High)"] span[class*="modelName"] {
+  color: #fbbf24 !important;
+  font-weight: 700 !important;
+}
+
+button[title*="Claude Sonnet 4.6"],
+button[title*="Claude Opus 4.6"] {
+  background: rgba(234, 88, 12, 0.1) !important;
+  border-left: 3px solid #ea580c !important;
+}
+button[title*="Claude Sonnet 4.6"]:hover,
+button[title*="Claude Opus 4.6"]:hover {
+  background: rgba(234, 88, 12, 0.18) !important;
+}
+button[title*="Claude Sonnet 4.6"] span[class*="modelName"],
+button[title*="Claude Opus 4.6"] span[class*="modelName"] {
+  color: #fb923c !important;
+  font-weight: 700 !important;
+}
+
+@media (max-width: 620px) {
   .agy-hero {
     flex-direction: column;
     align-items: flex-start;

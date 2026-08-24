@@ -4,7 +4,7 @@ English | [简体中文](README.md)
 
 A native DeepSeek Harness (DSH) provider plugin enabling direct access to Google's official Gemini models through your Google Antigravity (AGY) / Gemini subscription.
 
-This plugin registers the `gemini-subscription` provider (displayed as **"Antigravity (AGY 订阅)"** in the UI) and accesses models using the host user's Google OAuth session. It provides live account info, connection status, and real-time subscription quotas in the settings page. Fully aligned with the production CLIProxyAPI (CPA) Antigravity standard across Windows, macOS, and Linux.
+This plugin registers the `gemini-subscription` provider (displayed as **"Antigravity (AGY 订阅)"** in the UI) and accesses models using the host user's Google OAuth session. It provides live account info, connection status, and real-time subscription quotas in the settings page across Windows, macOS, and Linux.
 
 ---
 
@@ -37,38 +37,45 @@ This plugin registers the `gemini-subscription` provider (displayed as **"Antigr
 
 ### 2. Model Integration & Protocol Alignment
 
-- **Native `v1internal` Protocol**: Direct SSE streaming via `v1internal:streamGenerateContent?alt=sse`, perfectly aligned with CPA runtime request envelopes and User-Agent standards.
+- **Native `v1internal` Protocol**: Direct SSE streaming via `v1internal:streamGenerateContent?alt=sse`, perfectly aligned with Antigravity runtime request envelopes and User-Agent standards.
 - **High-Availability Endpoint Routing**: Full-stack **Daily-first (`daily-cloudcode-pa.googleapis.com`) → Prod fallback (`cloudcode-pa.googleapis.com`)** routing.
-- **Deep Reasoning & Multimodal**: Native support for Gemini 3.7 / 2.5 Thinking reasoning traces (`thought: true`), multimodal image attachments, and tool calling.
+- **Deep Reasoning & Multimodal**: Native support for Gemini 3.7 / 3.6 / 3.5 / 3.1 & Claude 4.6 Thinking reasoning traces (`thought: true`), multimodal image attachments, and tool calling.
 - **Tool Calling & Environment Adaptation**: Preserves DSH tool schemas with shell adaptation for `pwsh`, `powershell`, `bash`, and `sh`.
 
-### 3. Live Quota & AI Credits
+### 3. Live Quota & Dashboard
 
-- **Per-Model Live Quotas**: Dynamically queries `fetchAvailableModels` to extract each model's real `remainingFraction` (e.g. `0.72` → **72% Remaining / 28% Used**) and RFC3339 `resetTime`.
-- **Raw AI Credits Count**: Parses `paidTier.availableCredits` to display total available Google One AI Credits (e.g. `1,000 Credits`) without converting absolute counts to false percentages.
+- **Live Subscription Quotas**: Dynamically queries `v1internal:retrieveUserQuotaSummary` to extract quota groups (Gemini Models, Claude and GPT Models) with exact percentages and reset times.
 - **No False Placeholders**: If upstream quota data is unavailable, it displays an informative message rather than fabricating fake 0% or 100% metrics. Automatically invalidates cache on generation completion.
 
 ### 4. Frontend Settings & Interaction
 
 - **Dedicated AGY Settings Panel**: Displays Google user profile (avatar, email, name), Tier/Plan, Companion Project ID, storage type, and latency test.
-- **Quota Breakdown Cards**: Renders animated progress bars, remaining/used percentages, and localized reset timestamps for each model bucket.
+- **Quota Breakdown Cards**: Renders animated progress bars, remaining/used percentages, and localized reset timestamps for each group and bucket (Weekly / Five Hour).
 - **Composer Quota Widget**: Displays real-time remaining quota badge for the currently selected model next to the chat input box.
-- **Subagent Delegation Routing**: Customize default models, reasoning effort, max nesting depth, and concurrent subagent limits for autonomous workflows.
+- **Context Window Tiers**: 272K (default), 512K, and 1M configurable options.
 
 ---
 
 ## Model Catalog
 
-The plugin dynamically discovers available models via `fetchAvailableModels`, with the following baseline catalog:
+The plugin aligns with official AGY CLI models with the following baseline catalog:
 
-| Display Name | Model ID | Context Window | Capabilities |
+| Display Name | Model ID | Default Context | Capabilities |
 | :--- | :--- | :--- | :--- |
-| **Gemini 2.5 Pro** | `gemini-2.5-pro` | 1,048,576 (up to 2M) | Deep reasoning, long-context analysis, vision, tools |
-| **Gemini 2.5 Flash** | `gemini-2.5-flash` | 1,048,576 | Ultra-low latency, high throughput, vision, tools |
-| **Gemini 2.5 Flash-Lite** | `gemini-2.5-flash-lite` | 1,048,576 | High concurrency, lightweight reasoning |
-| **Gemini 3.7 Flash** | `gemini-3.7-flash` | 1,048,576 | Next-gen hybrid reasoning, vision, tools |
-| **Gemini 3.7 Flash (Thinking)** | `gemini-3.7-flash-thinking` | 1,048,576 | Extended reasoning with high thinking budget |
-| **Gemini 3.1 Pro (Preview)** | `gemini-3.1-pro` | 1,048,576 | Preview architecture |
+| **Gemini 3.7 Flash (High)** | `gemini-3.7-flash-high` | 272,000 (up to 1M) | Deep reasoning & coding flagship (High effort) |
+| **Gemini 3.7 Flash (Medium)** | `gemini-3.7-flash-medium` | 272,000 (up to 1M) | Hybrid reasoning (Medium effort) |
+| **Gemini 3.7 Flash (Low)** | `gemini-3.7-flash-low` | 272,000 (up to 1M) | Ultra-fast response (Low effort) |
+| **Gemini 3.6 Flash (High)** | `gemini-3.6-flash-high` | 272,000 (up to 1M) | 3.6 High thinking reasoning |
+| **Gemini 3.6 Flash (Medium)** | `gemini-3.6-flash-medium` | 272,000 (up to 1M) | 3.6 Medium thinking |
+| **Gemini 3.6 Flash (Low)** | `gemini-3.6-flash-low` | 272,000 (up to 1M) | 3.6 Low thinking fast model |
+| **Gemini 3.5 Flash (High)** | `gemini-3.5-flash-high` | 272,000 (up to 1M) | 3.5 High thinking |
+| **Gemini 3.5 Flash (Medium)** | `gemini-3.5-flash-medium` | 272,000 (up to 1M) | 3.5 Medium thinking |
+| **Gemini 3.5 Flash (Low)** | `gemini-3.5-flash-low` | 272,000 (up to 1M) | 3.5 Low thinking |
+| **Gemini 3.1 Pro (High)** | `gemini-3.1-pro-high` | 272,000 (up to 1M) | 3.1 Pro flagship (High effort) |
+| **Gemini 3.1 Pro (Low)** | `gemini-3.1-pro-low` | 272,000 (up to 1M) | 3.1 Pro lightweight (Low effort) |
+| **Claude Sonnet 4.6 (Thinking)** | `claude-sonnet-4-6` | 200,000 | Antigravity Claude Sonnet flagship |
+| **Claude Opus 4.6 (Thinking)** | `claude-opus-4-6-thinking` | 200,000 | Antigravity Claude Opus deep reasoning |
+| **GPT-OSS 120B (Medium)** | `gpt-oss-120b-medium` | 272,000 (up to 1M) | Open source LLM flagship |
 
 > Note: Internal autocomplete/test models such as `chat_20706` and `tab_flash_lite_preview` are automatically filtered out.
 

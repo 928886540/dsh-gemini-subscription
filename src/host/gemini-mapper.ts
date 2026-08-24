@@ -103,6 +103,24 @@ export interface ImageResolver {
   resolveImage(attachment: ImageAttachmentRef): Promise<{ mimeType: string; base64: string } | null>
 }
 
+// Global in-memory cache for tool call thought signatures
+const thoughtSignatureCache = new Map<string, string>()
+let lastRecordedThoughtSignature: string | null = null
+
+export function recordThoughtSignature(key: string, sig: string): void {
+  if (!sig) return
+  if (thoughtSignatureCache.size > 10_000) {
+    const firstKey = thoughtSignatureCache.keys().next().value
+    if (firstKey) thoughtSignatureCache.delete(firstKey)
+  }
+  thoughtSignatureCache.set(key, sig)
+  lastRecordedThoughtSignature = sig
+}
+
+export function getRecordedThoughtSignature(key: string): string | undefined {
+  return thoughtSignatureCache.get(key)
+}
+
 export async function mapGenerateOptionsToGeminiPayload(
   options: GenerateOptions,
   projectId: string,
@@ -130,9 +148,7 @@ export async function mapGenerateOptionsToGeminiPayload(
     if (message.role === 'system') {
       for (const block of message.content) {
         if (block.type === 'text' && block.text) {
-          systemText = systemText ? `${systemText}
-
-${block.text}` : block.text
+          systemText = systemText ? `${systemText}\n\n${block.text}` : block.text
         }
       }
       continue
@@ -197,11 +213,17 @@ ${block.text}` : block.text
           } catch {
             parsedArgs = {}
           }
+          const callIdStr = String(block.id)
           const sig = (block as { thoughtSignature?: string; signature?: string }).thoughtSignature
             || (block as { thoughtSignature?: string; signature?: string }).signature
+            || getRecordedThoughtSignature(callIdStr)
+            || getRecordedThoughtSignature(`${block.name}:${callIdStr}`)
+            || lastRecordedThoughtSignature
+            || undefined
+
           const functionCallPart: GeminiPart = {
             functionCall: {
-              id: String(block.id),
+              id: callIdStr,
               name: block.name,
               args: parsedArgs,
             },
@@ -230,24 +252,22 @@ ${block.text}` : block.text
   }
 
   // Build thinking configuration
+  // 模型自带预算就用模型预算；没有就用 catalog 里这个模型自己的 defaultThinkingBudget
+  const budget = catalogEntry.defaultThinkingBudget ?? defaultThinkingBudget
   const thinkingConfig: GeminiGenerationConfig['thinkingConfig'] = catalogEntry.reasoning ? {
     includeThoughts: true,
-    thinkingBudget: options.reasoningEffort === 'low'
-      ? 2048
-      : options.reasoningEffort === 'high'
-        ? 16384
-        : (catalogEntry.defaultThinkingBudget ?? defaultThinkingBudget),
+    thinkingBudget: budget,
   } : undefined
 
   const isClaude = catalogEntry.id.includes('claude') || upstreamModel.includes('claude')
   const hardMax = isClaude ? 64_000 : 65_536
   const requestedMaxTokens = Math.min(options.maxTokens ?? catalogEntry.maxOutputTokens ?? hardMax, hardMax)
-  const budget = thinkingConfig?.thinkingBudget ?? 0
+  const thinkingBudgetVal = thinkingConfig?.thinkingBudget ?? 0
 
   // Claude and Gemini extended thinking strictly require maxOutputTokens > thinkingBudget
   const maxOutputTokens = Math.min(
     hardMax,
-    Math.max(requestedMaxTokens, budget > 0 ? Math.min(budget + 4096, hardMax) : 4096),
+    Math.max(requestedMaxTokens, thinkingBudgetVal > 0 ? Math.min(thinkingBudgetVal + 4096, hardMax) : 4096),
   )
 
   if (thinkingConfig && typeof thinkingConfig.thinkingBudget === 'number') {
@@ -316,22 +336,31 @@ export async function* parseGeminiStream(
 
       for (const candidate of candidates) {
         const parts = candidate.content?.parts ?? []
+        let currentCandidateSig: string | null = null
+        for (const part of parts) {
+          const sig = (part as { thoughtSignature?: string }).thoughtSignature
+          if (sig) {
+            currentCandidateSig = sig
+            recordThoughtSignature('last', sig)
+          }
+        }
+
         for (const part of parts) {
           if (part.thought === true || (typeof part.thought === 'string' && part.thought.length > 0)) {
             const thoughtText = typeof part.thought === 'string' ? part.thought : (part.text ?? '')
             if (thoughtText) {
               if (reasoningIndex === null) {
                 reasoningIndex = nextIndex++
-                yield { type: 'block-start', index: reasoningIndex, blockType: 'reasoning' }
+                yield cleanChunk({ type: 'block-start', index: reasoningIndex, blockType: 'reasoning' })
               }
-              yield { type: 'reasoning-delta', index: reasoningIndex, text: thoughtText }
+              yield cleanChunk({ type: 'reasoning-delta', index: reasoningIndex, text: thoughtText })
             }
           } else if (part.text) {
             if (textIndex === null) {
               textIndex = nextIndex++
-              yield { type: 'block-start', index: textIndex, blockType: 'text' }
+              yield cleanChunk({ type: 'block-start', index: textIndex, blockType: 'text' })
             }
-            yield { type: 'text-delta', index: textIndex, text: part.text }
+            yield cleanChunk({ type: 'text-delta', index: textIndex, text: part.text })
           }
 
           if (part.functionCall) {
@@ -340,19 +369,27 @@ export async function* parseGeminiStream(
               ? part.functionCall.args
               : JSON.stringify(part.functionCall.args ?? {})
             activeToolIndex = nextIndex++
-            yield { type: 'block-start', index: activeToolIndex, blockType: 'tool-call' }
+            yield cleanChunk({ type: 'block-start', index: activeToolIndex, blockType: 'tool-call' })
             const chunk: StreamChunk = {
               type: 'tool-call-delta',
               index: activeToolIndex,
               id: callId,
-              name: part.functionCall.name,
               argumentsDelta: argsStr,
             }
-            const sig = (part as { thoughtSignature?: string }).thoughtSignature
+            if (part.functionCall.name) {
+              chunk.name = part.functionCall.name
+            }
+            const sig = (part as { thoughtSignature?: string }).thoughtSignature || currentCandidateSig
             if (sig) {
               (chunk as Record<string, unknown>).thoughtSignature = sig
+              const callIdStr = String(callId)
+              recordThoughtSignature(callIdStr, sig)
+              if (part.functionCall.name) {
+                recordThoughtSignature(`${part.functionCall.name}:${callIdStr}`, sig)
+                recordThoughtSignature(part.functionCall.name, sig)
+              }
             }
-            yield chunk
+            yield cleanChunk(chunk)
           }
         }
 
@@ -362,7 +399,7 @@ export async function* parseGeminiStream(
             : candidate.finishReason === 'MAX_TOKENS'
               ? 'max-tokens'
               : 'stop'
-          yield { type: 'finish', reason: { kind } }
+          yield cleanChunk({ type: 'finish', reason: { kind } })
         }
       }
 
@@ -370,16 +407,22 @@ export async function* parseGeminiStream(
         const u = responseObj.usageMetadata
         const inputTokens = u.promptTokenCount ?? 0
         const outputTokens = u.candidatesTokenCount ?? 0
-        const reasoningTokens = u.thoughtsTokenCount
-        yield {
-          type: 'usage',
-          usage: {
-            inputTokens,
-            outputTokens,
-            reasoningTokens,
-          },
+        const usageObj: TokenUsage = {
+          inputTokens,
+          outputTokens,
         }
+        if (typeof u.thoughtsTokenCount === 'number' && Number.isFinite(u.thoughtsTokenCount)) {
+          usageObj.reasoningTokens = u.thoughtsTokenCount
+        }
+        yield cleanChunk({
+          type: 'usage',
+          usage: usageObj,
+        })
       }
     }
   }
+}
+
+function cleanChunk<T extends StreamChunk>(chunk: T): T {
+  return JSON.parse(JSON.stringify(chunk)) as T
 }

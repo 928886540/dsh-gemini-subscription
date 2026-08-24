@@ -4,7 +4,7 @@
 
 让 DSH（DeepSeek Harness）通过 Google Antigravity / Gemini 订阅使用 Google 官方 Gemini 系列模型的插件。
 
-插件注册 `gemini-subscription` Provider（显示名 **“Antigravity（AGY 订阅）”**），以当前 Host 用户的 Google OAuth 登录态访问模型，并在设置页展示账号信息、连接状态与实时订阅配额。全链路对齐成熟的 CLIProxyAPI (CPA) Antigravity 架构标准，支持 Windows、macOS 与 Linux。
+插件注册 `gemini-subscription` Provider（显示名 **“Antigravity（AGY 订阅）”**），以当前 Host 用户的 Google OAuth 登录态访问模型，并在设置页展示账号信息、连接状态与实时订阅配额。支持 Windows、macOS 与 Linux。
 
 ---
 
@@ -37,38 +37,45 @@
 
 ### 2. 模型接入与协议对齐
 
-- **原生 v1internal 协议**：直接对接 Antigravity 原生 API 端点（`v1internal:streamGenerateContent?alt=sse`），完美对齐 CPA runtime 请求包装与 User-Agent 规范；
+- **原生 v1internal 协议**：直接对接 Antigravity 原生 API 端点（`v1internal:streamGenerateContent?alt=sse`），完美对齐 Antigravity runtime 请求包装与 User-Agent 规范；
 - **双端点高可用路由**：全链路采用 **Daily 优先 (`daily-cloudcode-pa.googleapis.com`) → Prod 兜底 (`cloudcode-pa.googleapis.com`)** 的生产级故障转移策略；
-- **深度思考与多模态**：原生支持 Gemini 3.7 / 2.5 系列的 Thinking 深度思考过程（`thought: true`）、多模态图片输入与工具调用（Tool Calling）；
+- **深度思考与多模态**：原生支持 Gemini 3.7 / 3.6 / 3.5 / 3.1 系列与 Claude 4.6 的 Thinking 深度思考过程（`thought: true`）、多模态图片输入与工具调用（Tool Calling）；
 - **工具调用与环境自适应**：原样转发 DSH 暴露的工具 Schema，命令工具自适应兼容 `pwsh`、`powershell`、`bash` 与 `sh`。
 
-### 3. 实时配额与 AI 积分
+### 3. 实时配额与额度看板
 
-- **真实模型配额**：通过 `fetchAvailableModels` 实时获取各模型的真实可用额度 `remainingFraction`（如 `0.72` 换算为 **剩余 72% / 已用 28%**）与 ISO 重置时间 `resetTime`；
-- **真实积分计量**：解析 `paidTier.availableCredits`，真实展示 Google One AI Credits 等可用积分总量（如 `1,000 Credits`），不混淆为百分比；
+- **真实订阅配额**：通过 `v1internal:retrieveUserQuotaSummary` 实时获取各分组（Gemini Models、Claude and GPT Models）的真实可用额度与刷新重置时间；
 - **拒绝虚假占位**：若服务端未提供配额字段，如实展示提示，绝不编造虚假 0% 或 100% 占位；对话生成完成后自动触发缓存失效刷新。
 
 ### 4. 前端设置与交互
 
 - **独立 AGY 设置页**：展示 Google 账号（邮箱、昵称、头像）、套餐类型（Tier）、关联项目 ID（Project ID）、凭据存储状态与网络延迟测试；
-- **多模型配额卡片**：直观展示各模型剩余/已用进度条与本地化重置时间；
+- **多模型配额卡片**：直观展示各分组与周期（Weekly / Five Hour）剩余/已用进度条与本地化刷新时间；
 - **Composer 快捷用量徽标**：在对话输入框右侧显示当前选中模型的实时剩余额度；
-- **子智能体委派路由**：支持全局自定义子代理默认模型、思考深度、最大嵌套深度与并发子智能体数量上限。
+- **上下文窗口档位**：支持 272K（默认）、512K 与 1M 三档可调上下文。
 
 ---
 
 ## 模型目录
 
-插件支持通过 `fetchAvailableModels` 服务端接口**动态发现**当前账号与项目开放的模型，并内置以下高可用基准模型表：
+插件对齐 AGY CLI 官方模型列表，内置以下基准模型：
 
-| 模型显示名 | 模型 ID | 上下文窗口 | 能力特性 |
+| 模型显示名 | 模型 ID | 默认上下文 | 能力特性 |
 | :--- | :--- | :--- | :--- |
-| **Gemini 2.5 Pro** | `gemini-2.5-pro` | 1,048,576 (可扩展至 2M) | 深度推理、长文本理解、多模态识图、工具调用 |
-| **Gemini 2.5 Flash** | `gemini-2.5-flash` | 1,048,576 | 超低延迟、高吞吐、多模态、轻量推理 |
-| **Gemini 2.5 Flash-Lite** | `gemini-2.5-flash-lite` | 1,048,576 | 极速高并发、低开销推理 |
-| **Gemini 3.7 Flash** | `gemini-3.7-flash` | 1,048,576 | 新一代混合推理架构、多模态 |
-| **Gemini 3.7 Flash (Thinking)** | `gemini-3.7-flash-thinking` | 1,048,576 | 深度扩展推理 (Thinking 高预算)、复杂问题攻坚 |
-| **Gemini 3.1 Pro (Preview)** | `gemini-3.1-pro` | 1,048,576 | 前瞻预览版模型架构 |
+| **Gemini 3.7 Flash (High)** | `gemini-3.7-flash-high` | 272,000 (可调至 1M) | 最强深度思考与编码旗舰 (High 强度) |
+| **Gemini 3.7 Flash (Medium)** | `gemini-3.7-flash-medium` | 272,000 (可调至 1M) | 混合推理架构 (Medium 强度) |
+| **Gemini 3.7 Flash (Low)** | `gemini-3.7-flash-low` | 272,000 (可调至 1M) | 极速响应推理 (Low 强度) |
+| **Gemini 3.6 Flash (High)** | `gemini-3.6-flash-high` | 272,000 (可调至 1M) | 3.6 高思维强度推理模型 |
+| **Gemini 3.6 Flash (Medium)** | `gemini-3.6-flash-medium` | 272,000 (可调至 1M) | 3.6 中等思维强度模型 |
+| **Gemini 3.6 Flash (Low)** | `gemini-3.6-flash-low` | 272,000 (可调至 1M) | 3.6 低思维强度极速模型 |
+| **Gemini 3.5 Flash (High)** | `gemini-3.5-flash-high` | 272,000 (可调至 1M) | 3.5 高思维强度模型 |
+| **Gemini 3.5 Flash (Medium)** | `gemini-3.5-flash-medium` | 272,000 (可调至 1M) | 3.5 中等思维强度模型 |
+| **Gemini 3.5 Flash (Low)** | `gemini-3.5-flash-low` | 272,000 (可调至 1M) | 3.5 低思维强度极速模型 |
+| **Gemini 3.1 Pro (High)** | `gemini-3.1-pro-high` | 272,000 (可调至 1M) | 3.1 Pro 架构旗舰版 (High 强度) |
+| **Gemini 3.1 Pro (Low)** | `gemini-3.1-pro-low` | 272,000 (可调至 1M) | 3.1 Pro 架构轻量版 (Low 强度) |
+| **Claude Sonnet 4.6 (Thinking)** | `claude-sonnet-4-6` | 200,000 | Antigravity Claude Sonnet 旗舰思考 |
+| **Claude Opus 4.6 (Thinking)** | `claude-opus-4-6-thinking` | 200,000 | Antigravity Claude Opus 深度思考 |
+| **GPT-OSS 120B (Medium)** | `gpt-oss-120b-medium` | 272,000 (可调至 1M) | 开源大模型旗舰 (Medium 强度) |
 
 > 提示：自动过滤 `chat_20706`、`tab_flash_lite_preview` 等内部补全调试模型。
 

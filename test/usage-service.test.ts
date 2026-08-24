@@ -1,144 +1,85 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   UsageService,
-  parseQuotaBuckets,
-  parseWindowFromFraction,
+  parseQuotaGroups,
 } from '../src/host/usage-service.ts'
 import { OAuthService } from '../src/host/oauth-service.ts'
 import { MemoryTokenStore } from '../src/host/token-store.ts'
 
 describe('Usage Service', () => {
-  it('converts remainingFraction 0.72 to 72% remaining and 28% used', () => {
-    const window = parseWindowFromFraction(0.72, '2026-08-24T18:00:00Z', 300)
-    expect(window).not.toBeNull()
-    expect(window?.remainingFraction).toBe(0.72)
-    expect(window?.remainingPercent).toBe(72)
-    expect(window?.usedPercent).toBe(28)
-    expect(window?.windowDurationMins).toBe(300)
-    expect(window?.resetsAt).toBe(Date.parse('2026-08-24T18:00:00Z'))
-  })
-
-  it('handles clamped boundary remainingFraction (0, 1, and negative/overflow)', () => {
-    const zero = parseWindowFromFraction(0)
-    expect(zero?.remainingPercent).toBe(0)
-    expect(zero?.usedPercent).toBe(100)
-
-    const full = parseWindowFromFraction(1)
-    expect(full?.remainingPercent).toBe(100)
-    expect(full?.usedPercent).toBe(0)
-
-    const overflow = parseWindowFromFraction(1.5)
-    expect(overflow?.remainingPercent).toBe(100)
-    expect(overflow?.usedPercent).toBe(0)
-  })
-
-  it('parses multi-bucket model quotas and credits from loadCodeAssist payload', () => {
+  it('parses real quota groups and buckets from retrieveUserQuotaSummary payload', () => {
     const rawData = {
-      paidTier: {
-        id: 'google-ai-pro',
-        name: 'Google AI Pro',
-        availableCredits: [
-          {
-            creditType: 'GOOGLE_ONE_AI',
-            creditAmount: '1000',
-            minimumCreditAmountForUsage: '1',
-          },
-        ],
-      },
-      quota: {
-        buckets: [
-          {
-            modelId: 'gemini-2.5-pro',
-            modelName: 'Gemini 2.5 Pro',
-            remainingFraction: 0.8,
-            resetTime: '2026-08-24T20:00:00Z',
-          },
-          {
-            modelId: 'gemini-3.7-flash',
-            modelName: 'Gemini 3.7 Flash',
-            remainingFraction: 0.55,
-            resetTime: '2026-08-24T22:00:00Z',
-          },
-        ],
-      },
+      groups: [
+        {
+          displayName: 'Gemini Models',
+          description: 'Gemini models quota',
+          buckets: [
+            {
+              bucketId: 'gemini_weekly',
+              displayName: 'Weekly',
+              remainingFraction: 0.7847,
+              resetTime: '2026-08-27T16:52:00Z',
+            },
+            {
+              bucketId: 'gemini_five_hour',
+              displayName: 'Five Hour',
+              remainingFraction: 0.0,
+              resetTime: '2026-08-24T07:43:00Z',
+            },
+          ],
+        },
+        {
+          displayName: 'Claude and GPT Models',
+          buckets: [
+            {
+              bucketId: 'claude_gpt_weekly',
+              displayName: 'Weekly',
+              remainingFraction: 0.8361,
+              resetTime: '2026-08-27T21:47:00Z',
+            },
+            {
+              bucketId: 'claude_gpt_five_hour',
+              displayName: 'Five Hour',
+              remainingFraction: 0.9896,
+              resetTime: '2026-08-24T11:38:00Z',
+            },
+          ],
+        },
+      ],
     }
 
-    const buckets = parseQuotaBuckets(rawData, 'Google AI Pro')
-    expect(buckets.length).toBe(3)
+    const groups = parseQuotaGroups(rawData)
+    expect(groups.length).toBe(2)
 
-    // Check model buckets
-    const pro = buckets.find(b => b.id === 'gemini-2.5-pro')
-    expect(pro).toBeDefined()
-    expect(pro?.primary?.remainingPercent).toBe(80)
-    expect(pro?.primary?.usedPercent).toBe(20)
-    expect(pro?.primary?.resetsAt).toBe(Date.parse('2026-08-24T20:00:00Z'))
+    const geminiGroup = groups.find(g => g.displayName === 'Gemini Models')
+    expect(geminiGroup).toBeDefined()
+    expect(geminiGroup?.buckets.length).toBe(2)
 
-    const flash = buckets.find(b => b.id === 'gemini-3.7-flash')
-    expect(flash).toBeDefined()
-    expect(flash?.primary?.remainingPercent).toBe(55)
-    expect(flash?.primary?.usedPercent).toBe(45)
+    const weeklyGemini = geminiGroup?.buckets.find(b => b.bucketId === 'gemini_weekly')
+    expect(weeklyGemini?.remainingPercent).toBe(78.47)
+    expect(weeklyGemini?.usedPercent).toBe(21.53)
+    expect(weeklyGemini?.resetsAt).toBe(Date.parse('2026-08-27T16:52:00Z'))
 
-    // Check credit bucket: stores absolute raw quantity 1000, primary is null
-    const credit = buckets.find(b => b.id === 'credit-google_one_ai')
-    expect(credit).toBeDefined()
-    expect(credit?.name).toBe('Google One AI Credits')
-    expect(credit?.creditAmount).toBe(1000)
-    expect(credit?.primary).toBeNull()
+    const fiveHourGemini = geminiGroup?.buckets.find(b => b.bucketId === 'gemini_five_hour')
+    expect(fiveHourGemini?.remainingPercent).toBe(0)
+    expect(fiveHourGemini?.usedPercent).toBe(100)
+
+    const claudeGroup = groups.find(g => g.displayName === 'Claude and GPT Models')
+    expect(claudeGroup).toBeDefined()
+    const fiveHourClaude = claudeGroup?.buckets.find(b => b.bucketId === 'claude_gpt_five_hour')
+    expect(fiveHourClaude?.remainingPercent).toBe(98.96)
+    expect(fiveHourClaude?.usedPercent).toBe(1.04)
   })
 
-  it('parses model quotas directly from dynamic fetchAvailableModels models catalog', () => {
-    const dynamicModels = [
-      {
-        id: 'gemini-2.5-flash',
-        name: 'Gemini 2.5 Flash',
-        description: 'Flash model',
-        contextWindow: 1048576,
-        maxContextWindow: 1048576,
-        maxOutputTokens: 65536,
-        reasoning: true,
-        vision: true,
-        tools: true,
-        upstreamModel: 'gemini-2.5-flash',
-        quotaInfo: {
-          remainingFraction: 0.72,
-          resetTime: '2026-08-24T18:00:00Z',
-        },
-      },
-      {
-        id: 'gemini-3.7-flash',
-        name: 'Gemini 3.7 Flash',
-        description: 'Hybrid reasoning',
-        contextWindow: 1048576,
-        maxContextWindow: 1048576,
-        maxOutputTokens: 65536,
-        reasoning: true,
-        vision: true,
-        tools: true,
-        upstreamModel: 'gemini-3.7-flash',
-        quotaInfo: {
-          remainingFraction: 1.0,
-          resetTime: '2026-08-24T21:00:00Z',
-        },
-      },
-    ]
+  it('returns empty array when upstream provides no groups (no fake placeholders)', () => {
+    const emptyGroups = parseQuotaGroups(null)
+    expect(emptyGroups).toEqual([])
 
-    const buckets = parseQuotaBuckets(null, 'Google AI Pro', dynamicModels)
-    expect(buckets.length).toBe(2)
-
-    const flash = buckets.find(b => b.id === 'gemini-2.5-flash')
-    expect(flash).toBeDefined()
-    expect(flash?.name).toBe('Gemini 2.5 Flash')
-    expect(flash?.primary?.remainingPercent).toBe(72)
-    expect(flash?.primary?.usedPercent).toBe(28)
-    expect(flash?.primary?.resetsAt).toBe(Date.parse('2026-08-24T18:00:00Z'))
-
-    const flash37 = buckets.find(b => b.id === 'gemini-3.7-flash')
-    expect(flash37).toBeDefined()
-    expect(flash37?.primary?.remainingPercent).toBe(100)
-    expect(flash37?.primary?.usedPercent).toBe(0)
+    const emptyObj = parseQuotaGroups({})
+    expect(emptyObj).toEqual([])
   })
 
-  it('falls back from daily endpoint to prod endpoint when daily fails (Daily-first order)', async () => {
+  it('fetches quota via retrieveUserQuotaSummary with fallback endpoints', async () => {
     const store = new MemoryTokenStore()
     await store.save({
       accessToken: 'valid-token',
@@ -151,12 +92,32 @@ describe('Usage Service', () => {
         return Promise.reject(new Error('Daily endpoint network error'))
       }
       if (url.includes('cloudcode-pa.googleapis.com')) {
+        if (url.includes('retrieveUserQuotaSummary')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              cloudaicompanionProject: 'test-proj',
+              groups: [
+                {
+                  displayName: 'Gemini Models',
+                  buckets: [
+                    {
+                      bucketId: 'five_hour',
+                      displayName: 'Five Hour',
+                      remainingFraction: 0.5,
+                      resetTime: '2026-08-24T20:00:00Z',
+                    },
+                  ],
+                },
+              ],
+            }),
+          })
+        }
         if (url.includes('loadCodeAssist')) {
           return Promise.resolve({
             ok: true,
             json: async () => ({
-              currentTier: { id: 'pro-tier', name: 'Antigravity Pro' },
-              cloudaicompanionProject: 'prod-proj',
+              paidTier: { id: 'pro-tier', name: 'Google AI Pro' },
             }),
           })
         }
@@ -164,15 +125,7 @@ describe('Usage Service', () => {
           return Promise.resolve({
             ok: true,
             json: async () => ({
-              models: {
-                'gemini-2.5-pro': {
-                  displayName: 'Gemini 2.5 Pro',
-                  quotaInfo: {
-                    remainingFraction: 0.65,
-                    resetTime: '2026-08-24T19:00:00Z',
-                  },
-                },
-              },
+              models: {},
             }),
           })
         }
@@ -185,13 +138,12 @@ describe('Usage Service', () => {
     const quota = await usage.getQuota(true)
 
     expect(quota.tier).toBe('pro-tier')
-    expect(quota.projectId).toBe('prod-proj')
-    expect(quota.buckets.length).toBe(1)
-    expect(quota.buckets[0].primary?.remainingPercent).toBe(65)
-    expect(quota.buckets[0].primary?.usedPercent).toBe(35)
+    expect(quota.projectId).toBe('test-proj')
+    expect(quota.quotaGroups.length).toBe(1)
+    expect(quota.quotaGroups[0].buckets[0].remainingPercent).toBe(50)
   })
 
-  it('measures connection latency', async () => {
+  it('measures connection latency via retrieveUserQuotaSummary', async () => {
     const store = new MemoryTokenStore()
     await store.save({
       accessToken: 'valid-token',
@@ -212,3 +164,4 @@ describe('Usage Service', () => {
     expect(res.latencyMs).toBeGreaterThanOrEqual(0)
   })
 })
+

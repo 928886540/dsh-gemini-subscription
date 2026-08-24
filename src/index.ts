@@ -49,6 +49,7 @@ export { GeminiSubscriptionAdapter } from './host/adapter.ts'
 export { GeminiClient } from './host/gemini-client.ts'
 export { UsageService } from './host/usage-service.ts'
 export { createPlatformTokenStore } from './host/platform-token-store.ts'
+export { parseGeminiStream, mapGenerateOptionsToGeminiPayload } from './host/gemini-mapper.ts'
 export {
   PROVIDER_ID,
   PROVIDER_NAME,

@@ -4,10 +4,16 @@ import type {
   CredentialStorageDto,
   GeminiContextWindowOverridesDto,
   PluginStatusDto,
-  QuotaCpaRowDto,
+  QuotaBucketDto,
+  QuotaGroupDto,
   SubscriptionPreferencesUpdateDto,
 } from '../shared/contracts.ts'
-import { GEMINI_MODEL_CATALOG } from '../shared/model-catalog.ts'
+import {
+  ALLOWED_CONTEXT_WINDOWS,
+  DEFAULT_CONTEXT_WINDOW,
+  GEMINI_MODEL_CATALOG,
+  normalizeContextWindow,
+} from '../shared/model-catalog.ts'
 import { GeminiSubscriptionApi, parseLoginEvent } from './api.ts'
 import { NS } from './locales.ts'
 
@@ -15,10 +21,12 @@ type Props = PropsRuntime<'settings.section'> & PropsLocale<typeof NS>
 type BusyAction = 'login' | 'token' | 'quota' | 'test' | 'logout' | 'preferences' | null
 
 const CONFIGURABLE_CONTEXT_MODELS: readonly { id: keyof GeminiContextWindowOverridesDto; name: string; defaultCap: number }[] = [
-  { id: 'gemini-3.7-flash-thinking', name: 'Gemini 3.7 Flash (Thinking / High)', defaultCap: 1_048_576 },
-  { id: 'gemini-3.7-flash', name: 'Gemini 3.7 Flash', defaultCap: 1_048_576 },
-  { id: 'gemini-3.1-pro', name: 'Gemini 3.1 Pro', defaultCap: 1_048_576 },
-  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', defaultCap: 1_048_576 },
+  { id: 'gemini-3.7-flash-high', name: 'Gemini 3.7 Flash (High)', defaultCap: DEFAULT_CONTEXT_WINDOW },
+  { id: 'gemini-3.7-flash-medium', name: 'Gemini 3.7 Flash (Medium)', defaultCap: DEFAULT_CONTEXT_WINDOW },
+  { id: 'gemini-3.7-flash-low', name: 'Gemini 3.7 Flash (Low)', defaultCap: DEFAULT_CONTEXT_WINDOW },
+  { id: 'gemini-3.6-flash-high', name: 'Gemini 3.6 Flash (High)', defaultCap: DEFAULT_CONTEXT_WINDOW },
+  { id: 'gemini-3.1-pro-high', name: 'Gemini 3.1 Pro (High)', defaultCap: DEFAULT_CONTEXT_WINDOW },
+  { id: 'gpt-oss-120b-medium', name: 'GPT-OSS 120B (Medium)', defaultCap: DEFAULT_CONTEXT_WINDOW },
 ] as const
 
 export function GeminiSubscriptionSection({ t }: Props): React.JSX.Element {
@@ -30,7 +38,6 @@ export function GeminiSubscriptionSection({ t }: Props): React.JSX.Element {
   const [authUrl, setAuthUrl] = useState<string | null>(null)
   const [popupBlocked, setPopupBlocked] = useState(false)
   const [latency, setLatency] = useState<number | null>(null)
-  const [contextDrafts, setContextDrafts] = useState<Record<string, string>>({})
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setError(null)
@@ -166,15 +173,9 @@ export function GeminiSubscriptionSection({ t }: Props): React.JSX.Element {
     setStatus((cur) => (cur === null ? cur : { ...cur, preferences }))
   })
 
-  const updateContextWindow = async (model: keyof GeminiContextWindowOverridesDto): Promise<void> => {
-    const current = status?.preferences.contextWindowOverrides[model] ?? 1_048_576
-    const parsed = parseCapacity(contextDrafts[model] ?? String(current))
-    if (parsed === null) {
-      setError('输入的上下文窗口容量格式无效（例如 1M, 2M, 512K）')
-      return
-    }
-    await updatePreferences({ contextWindowOverrides: { [model]: parsed } })
-    setContextDrafts((drafts) => ({ ...drafts, [model]: formatCapacity(parsed) }))
+  const updateContextWindow = async (model: keyof GeminiContextWindowOverridesDto, val: number): Promise<void> => {
+    const normalized = normalizeContextWindow(val)
+    await updatePreferences({ contextWindowOverrides: { [model]: normalized } })
   }
 
   const logout = async (): Promise<void> => run('logout', async () => {
@@ -200,9 +201,7 @@ export function GeminiSubscriptionSection({ t }: Props): React.JSX.Element {
 
   const account = status?.account
   const isAuthenticated = status?.authenticated === true
-  const cpaRows: QuotaCpaRowDto[] = status?.quota.cpaRows && status.quota.cpaRows.length > 0
-    ? status.quota.cpaRows
-    : fallbackCpaRows()
+  const quotaGroups: QuotaGroupDto[] = status?.quota.quotaGroups ?? []
 
   return (
     <div className="agy-dashboard">
@@ -322,12 +321,12 @@ export function GeminiSubscriptionSection({ t }: Props): React.JSX.Element {
         </div>
       </section>
 
-      {/* 3. CPA Live Quota Dashboard */}
+      {/* 3. AGY Live Quota Dashboard */}
       {isAuthenticated && (
         <section className="agy-card">
           <div className="agy-card-header">
             <h3 className="agy-card-title">
-              <span className="agy-card-title-icon">📊</span> 额度监控看板 (CPA 实时配额体系)
+              <span className="agy-card-title-icon">📊</span> 额度监控看板 (AGY 实时配额体系)
             </h3>
             <button
               className="agy-btn agy-btn-sm"
@@ -339,90 +338,66 @@ export function GeminiSubscriptionSection({ t }: Props): React.JSX.Element {
           </div>
 
           <div className="agy-quota-matrix">
-            {cpaRows.map((row) => {
-              const claudeLevel = row.claude.remainingPercent <= 10 ? 'danger' : row.claude.remainingPercent <= 20 ? 'warning' : 'normal'
-              const geminiLevel = row.gemini.remainingPercent <= 10 ? 'danger' : row.gemini.remainingPercent <= 20 ? 'warning' : 'normal'
-
-              return (
-                <div key={row.tag} className="agy-quota-window-card">
+            {quotaGroups.length === 0 ? (
+              <div style={{ padding: '24px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
+                暂无真实额度数据
+              </div>
+            ) : (
+              quotaGroups.map((group) => (
+                <div key={group.displayName} className="agy-quota-window-card">
                   <div className="agy-quota-window-head">
                     <span className="agy-window-tag">
-                      <span>⏱️</span> {row.tag} 周期限额
+                      <span>🤖</span> {group.displayName}
                     </span>
-                    {row.tag === '5H' && row.gemini.resetsAt ? (
+                    {group.description && (
                       <span className="agy-window-reset">
-                        重置时间: {formatRelativeReset(row.gemini.resetsAt)}
+                        {group.description.replace(/^Models within this group:\s*/i, '包含: ')}
                       </span>
-                    ) : (
-                      <span className="agy-window-reset">周度基础配额池</span>
                     )}
                   </div>
 
                   <div className="agy-quota-columns">
-                    {/* Claude Column */}
-                    <div className="agy-quota-track">
-                      <div className="agy-track-header">
-                        <span className="agy-track-title">
-                          <span>🧠</span> Claude
-                        </span>
-                        <span className={`agy-track-pct ${claudeLevel}`}>
-                          {row.claude.remainingPercent}%
-                        </span>
-                      </div>
-                      <div className="agy-progress-bar">
-                        <div
-                          className={`agy-progress-fill ${claudeLevel}`}
-                          style={{ width: `${row.claude.remainingPercent}%` }}
-                        />
-                      </div>
-                      <div className="agy-track-meta">
-                        <span>{row.claude.usedPercent}% 已用</span>
-                        <span>{row.claude.remainingPercent}% 剩余</span>
-                      </div>
-                    </div>
+                    {group.buckets.map((bucket) => {
+                      const level = bucket.remainingPercent <= 10 ? 'danger' : bucket.remainingPercent <= 20 ? 'warning' : 'normal'
+                      const resetText = formatRelativeReset(bucket.resetsAt)
+                      const bucketLabel = bucket.displayName.toLowerCase().includes('weekly')
+                        ? '周限额剩余'
+                        : (bucket.displayName.toLowerCase().includes('5h') || bucket.displayName.toLowerCase().includes('five'))
+                          ? '5小时限额'
+                          : bucket.displayName
 
-                    {/* Gemini Column */}
-                    <div className="agy-quota-track">
-                      <div className="agy-track-header">
-                        <span className="agy-track-title">
-                          <span>💎</span> Gemini
-                        </span>
-                        <span className={`agy-track-pct ${geminiLevel}`}>
-                          {row.gemini.remainingPercent}%
-                        </span>
-                      </div>
-                      <div className="agy-progress-bar">
-                        <div
-                          className={`agy-progress-fill ${geminiLevel}`}
-                          style={{ width: `${row.gemini.remainingPercent}%` }}
-                        />
-                      </div>
-                      <div className="agy-track-meta">
-                        <span>{row.gemini.usedPercent}% 已用</span>
-                        <span>{row.gemini.remainingPercent}% 剩余</span>
-                      </div>
-                    </div>
+                      return (
+                        <div key={bucket.bucketId} className="agy-quota-track">
+                          <div className="agy-track-header">
+                            <span className="agy-track-title">
+                              <span>⏱️</span> {bucketLabel}
+                            </span>
+                            <span className={`agy-track-pct ${level}`}>
+                              {bucket.remainingPercent}%
+                            </span>
+                          </div>
+                          <div className="agy-progress-bar">
+                            <div
+                              className={`agy-progress-fill ${level}`}
+                              style={{ width: `${Math.max(0, Math.min(100, bucket.remainingPercent))}%` }}
+                            />
+                          </div>
+                          <div className="agy-track-meta">
+                            <span>{bucket.usedPercent}% 已用</span>
+                            <span>{resetText ? `刷新时间: ${resetText}` : `${bucket.remainingPercent}% 剩余`}</span>
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
-              )
-            })}
-
-            {/* AI Credits row if available */}
-            {status?.quota.buckets?.find(b => typeof b.creditAmount === 'number') && (
-              <div className="agy-credit-row">
-                <span className="agy-credit-label">
-                  <span>⭐</span> Google One AI 独立积分 (Credits)
-                </span>
-                <span className="agy-credit-val">
-                  {status.quota.buckets.find(b => typeof b.creditAmount === 'number')?.creditAmount?.toLocaleString()} Credits 可用
-                </span>
-              </div>
+              ))
             )}
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#64748b', paddingTop: '2px' }}>
-            <span>数据直连 Google Antigravity 配额服务</span>
-            <span>更新时间: {status?.quota.fetchedAt ? new Date(status.quota.fetchedAt).toLocaleTimeString() : '—'}</span>
+            <span>直连 Google Antigravity 配额服务 (retrieveUserQuotaSummary)</span>
+            <span>刷新时间: {status?.quota.fetchedAt ? new Date(status.quota.fetchedAt).toLocaleTimeString() : '—'}</span>
           </div>
         </section>
       )}
@@ -431,7 +406,7 @@ export function GeminiSubscriptionSection({ t }: Props): React.JSX.Element {
       <section className="agy-card">
         <div className="agy-card-header">
           <h3 className="agy-card-title">
-            <span className="agy-card-title-icon">🚀</span> 旗舰模型矩阵 (已接入 DSH Provider)
+            <span className="agy-card-title-icon">🚀</span> 官方模型矩阵 (已接入 DSH Provider)
           </h3>
           <span style={{ fontSize: '11px', color: '#94a3b8' }}>
             Provider: <code style={{ color: '#38bdf8' }}>gemini-subscription</code>
@@ -439,27 +414,36 @@ export function GeminiSubscriptionSection({ t }: Props): React.JSX.Element {
         </div>
 
         <div className="agy-models-grid">
-          {GEMINI_MODEL_CATALOG.filter(m => !m.id.endsWith('-thinking')).map((model) => {
-            const isFire = model.id.includes('3.7')
+          {GEMINI_MODEL_CATALOG.map((model) => {
+            const is37 = model.id.includes('3.7')
             const isClaude = model.id.includes('claude')
+            const isPro = model.id.includes('3.1-pro')
             let badgeText = '通用推理'
-            if (model.id.includes('3.7-flash-high')) badgeText = '最强思考'
-            else if (model.id.includes('3.7-flash')) badgeText = '混合旗舰'
-            else if (model.id.includes('claude-sonnet')) badgeText = '顶级代码'
-            else if (model.id.includes('claude-opus')) badgeText = '深度推演'
-            else if (model.id.includes('3.1-pro')) badgeText = '百万长文'
-            else if (model.id.includes('2.5-pro')) badgeText = '200万上下文'
-            else if (model.id.includes('flash-lite')) badgeText = '极速轻量'
+            let desc = model.description
+            if (model.id === 'gemini-3.7-flash-high') { badgeText = '3.7 High'; desc = '旗舰深度思考模型' }
+            else if (model.id === 'gemini-3.7-flash-medium') { badgeText = '3.7 Med'; desc = '混合推理平衡模型' }
+            else if (model.id === 'gemini-3.7-flash-low') { badgeText = '3.7 Low'; desc = '极速响应推理模型' }
+            else if (model.id === 'gemini-3.6-flash-high') { badgeText = '3.6 High'; desc = '3.6 高思维强度' }
+            else if (model.id === 'gemini-3.6-flash-medium') { badgeText = '3.6 Med'; desc = '3.6 中思维强度' }
+            else if (model.id === 'gemini-3.6-flash-low') { badgeText = '3.6 Low'; desc = '3.6 低思维极速' }
+            else if (model.id === 'gemini-3.5-flash-high') { badgeText = '3.5 High'; desc = '3.5 高思维强度' }
+            else if (model.id === 'gemini-3.5-flash-medium') { badgeText = '3.5 Med'; desc = '3.5 中思维强度' }
+            else if (model.id === 'gemini-3.5-flash-low') { badgeText = '3.5 Low'; desc = '3.5 低思维极速' }
+            else if (model.id === 'gemini-3.1-pro-high') { badgeText = '3.1 Pro'; desc = '3.1 Pro 旗舰推演' }
+            else if (model.id === 'gemini-3.1-pro-low') { badgeText = '3.1 Low'; desc = '3.1 Pro 轻量架构' }
+            else if (model.id === 'claude-sonnet-4-6') { badgeText = 'Sonnet 4.6'; desc = 'Claude 4.6 顶级代码' }
+            else if (model.id === 'claude-opus-4-6-thinking') { badgeText = 'Opus 4.6'; desc = 'Claude 4.6 深度推演' }
+            else if (model.id === 'gpt-oss-120b-medium') { badgeText = 'GPT-OSS'; desc = '开源 120B 旗舰' }
 
             return (
               <div key={model.id} className="agy-model-card">
                 <div className="agy-model-card-top">
                   <span className="agy-model-name">{model.name}</span>
-                  <span className={`agy-model-badge ${isFire ? 'fire' : isClaude ? 'claude' : ''}`}>
+                  <span className={`agy-model-badge ${is37 ? 'fire' : isClaude ? 'claude' : isPro ? 'pro' : ''}`}>
                     {badgeText}
                   </span>
                 </div>
-                <span className="agy-model-desc">{model.description}</span>
+                <span className="agy-model-desc">{desc}</span>
               </div>
             )
           })}
@@ -474,45 +458,32 @@ export function GeminiSubscriptionSection({ t }: Props): React.JSX.Element {
           </h3>
         </div>
         <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8', lineHeight: 1.5 }}>
-          默认 1M; 可选启用最高 2M。该值用于 DSH 会话的压缩与溢出判断，可输入 1M、2M、512K 等容量。
+          默认 272K；可选 512K 与 1M。该值用于 DSH 会话的压缩与溢出判断。
         </p>
 
         <div className="agy-context-section">
           {CONFIGURABLE_CONTEXT_MODELS.map((model) => {
-            const fallback = status?.preferences.contextWindowOverrides[model.id] ?? model.defaultCap
-            const draft = contextDrafts[model.id]
-            const parsedDraft = draft === undefined ? fallback : parseCapacity(draft)
-            const dirty = draft !== undefined && parsedDraft !== fallback
+            const currentCap = normalizeContextWindow(status?.preferences.contextWindowOverrides[model.id] ?? model.defaultCap)
 
             return (
               <div key={model.id} className="agy-context-row">
                 <span className="agy-context-label">{model.name}</span>
                 <div className="agy-context-controls">
-                  <input
-                    type="text"
-                    className="agy-context-input"
-                    value={draft ?? formatCapacity(fallback)}
+                  <select
+                    className="agy-context-select"
+                    value={currentCap}
                     disabled={busy !== null}
                     onChange={(event) => {
-                      const val = event.currentTarget.value
-                      setContextDrafts((d) => ({ ...d, [model.id]: val }))
+                      const val = Number(event.currentTarget.value)
+                      void updateContextWindow(model.id, val)
                     }}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' && dirty) {
-                        event.preventDefault()
-                        void updateContextWindow(model.id)
-                      }
-                    }}
-                  />
-                  <span className="agy-context-unit">tokens</span>
-                  <button
-                    type="button"
-                    className="agy-btn agy-btn-sm"
-                    disabled={busy !== null || !dirty}
-                    onClick={() => void updateContextWindow(model.id)}
                   >
-                    保存
-                  </button>
+                    {ALLOWED_CONTEXT_WINDOWS.map((cap) => (
+                      <option key={cap} value={cap}>
+                        {cap === 272_000 ? '272K (默认)' : cap === 512_000 ? '512K' : '1M'}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
             )
@@ -548,21 +519,6 @@ export function GeminiSubscriptionSection({ t }: Props): React.JSX.Element {
   )
 }
 
-function fallbackCpaRows(): QuotaCpaRowDto[] {
-  return [
-    {
-      tag: '5H',
-      claude: { name: 'Claude', remainingPercent: 100, usedPercent: 0, resetsAt: null },
-      gemini: { name: 'Gemini', remainingPercent: 15, usedPercent: 85, resetsAt: Date.now() + 28 * 60 * 1000 },
-    },
-    {
-      tag: '7D',
-      claude: { name: 'Claude', remainingPercent: 85, usedPercent: 15, resetsAt: null },
-      gemini: { name: 'Gemini', remainingPercent: 82, usedPercent: 18, resetsAt: null },
-    },
-  ]
-}
-
 function storageLabel(storage: CredentialStorageDto | undefined): string {
   if (!storage || !storage.available) return '凭据存储不可用'
   if (storage.kind === 'windows-dpapi') return 'Windows DPAPI（硬件级当前用户加密）'
@@ -580,33 +536,18 @@ function storageNotice(storage: CredentialStorageDto | undefined): string {
   return '令牌安全持久化保存。'
 }
 
-function formatRelativeReset(timestampMs: number | null): string {
-  if (!timestampMs) return '—'
+function formatRelativeReset(timestampMs?: number | null): string {
+  if (!timestampMs) return ''
   const diff = timestampMs - Date.now()
-  const dateStr = new Date(timestampMs).toLocaleTimeString()
-  if (diff <= 0) return `${dateStr} (已重置)`
+  if (diff <= 0) return '马上刷新'
   const mins = Math.round(diff / 60_000)
-  if (mins < 60) return `${dateStr} (${mins}分钟后)`
+  if (mins < 60) return `${mins}分钟后刷新`
   const hours = Math.floor(mins / 60)
   const remainingMins = mins % 60
-  return `${dateStr} (${hours}小时${remainingMins > 0 ? `${remainingMins}分钟` : ''}后)`
-}
-
-export function parseCapacity(value: string): number | null {
-  const normalized = value.trim().toLowerCase().replace(/[,_\s]/g, '')
-  const matched = normalized.match(/^(\d+(?:\.\d+)?)(k|m)?$/)
-  if (matched === null) return null
-  const multiplier = matched[2] === 'm' ? 1_000_000 : matched[2] === 'k' ? 1_000 : 1
-  const parsed = Number(matched[1]) * multiplier
-  return Number.isSafeInteger(parsed) && parsed >= 1000 && parsed <= 2_097_152 ? parsed : null
-}
-
-export function formatCapacity(value: number): string {
-  if (value >= 1_000_000 && value % 1_000_000 === 0) return `${value / 1_000_000}M`
-  if (value % 1_000 === 0) return `${value / 1_000}K`
-  return String(value)
+  return `${hours}小时${remainingMins > 0 ? `${remainingMins}分钟` : ''}后刷新`
 }
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
+

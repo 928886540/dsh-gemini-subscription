@@ -19,40 +19,27 @@ export interface CredentialStorageDto {
   available: boolean
 }
 
-export interface QuotaWindowDto {
-  usedPercent: number
-  remainingPercent?: number
-  remainingFraction?: number
-  windowDurationMins: number | null
-  resetsAt: number | null
-}
 
 export interface QuotaBucketDto {
-  id: string
-  name: string
-  planType: string | null
-  creditAmount?: number | null
-  primary: QuotaWindowDto | null
-  secondary: QuotaWindowDto | null
-  windows: QuotaWindowDto[]
-}
-
-export interface QuotaCpaEntityDto {
-  name: string
+  bucketId: string
+  displayName: string
+  window?: string | null
+  remainingFraction: number
   remainingPercent: number
   usedPercent: number
-  resetsAt: number | null
+  resetTime?: string | null
+  resetsAt?: number | null
+  disabled?: boolean
 }
 
-export interface QuotaCpaRowDto {
-  tag: string
-  claude: QuotaCpaEntityDto
-  gemini: QuotaCpaEntityDto
+export interface QuotaGroupDto {
+  displayName: string
+  description?: string | null
+  buckets: QuotaBucketDto[]
 }
 
 export interface QuotaStatusDto {
-  cpaRows?: QuotaCpaRowDto[]
-  buckets: QuotaBucketDto[]
+  quotaGroups: QuotaGroupDto[]
   tier: string | null
   tierDisplayName: string | null
   projectId: string | null
@@ -73,12 +60,12 @@ export interface PublicErrorDto {
 }
 
 export interface GeminiContextWindowOverridesDto {
-  'gemini-2.5-pro': number
-  'gemini-2.5-flash': number
-  'gemini-2.5-flash-lite': number
-  'gemini-3.7-flash': number
-  'gemini-3.7-flash-thinking': number
-  'gemini-3.1-pro': number
+  'gemini-3.7-flash-high': number
+  'gemini-3.7-flash-medium': number
+  'gemini-3.7-flash-low': number
+  'gemini-3.6-flash-high': number
+  'gemini-3.1-pro-high': number
+  'gpt-oss-120b-medium': number
 }
 
 export interface SubscriptionPreferencesDto {

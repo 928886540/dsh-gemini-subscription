@@ -4,31 +4,35 @@ import {
 } from '../compat.ts'
 import type {
   QuotaBucketDto,
-  QuotaCpaRowDto,
+  QuotaGroupDto,
   QuotaStatusDto,
-  QuotaWindowDto,
 } from '../shared/contracts.ts'
 import {
   fetchDynamicAntigravityModels,
-  type GeminiModelCatalogEntry,
 } from '../shared/model-catalog.ts'
 import type { OAuthService } from './oauth-service.ts'
 
 type FetchLike = typeof fetch
 
-export interface AvailableCreditItem {
-  creditType?: string
-  creditAmount?: string | number
-  minimumCreditAmountForUsage?: string | number
+export interface RawQuotaBucket {
+  bucketId?: string
+  displayName?: string
+  window?: string
+  remainingFraction?: number
+  remainingAmount?: string | number
+  resetTime?: string
+  disabled?: boolean
 }
 
-export interface RawModelQuotaItem {
-  modelId?: string
-  modelName?: string
-  name?: string
-  remainingFraction?: number
-  resetTime?: string
-  windowDurationMins?: number
+export interface RawQuotaGroup {
+  displayName?: string
+  description?: string
+  buckets?: RawQuotaBucket[]
+}
+
+export interface RetrieveUserQuotaSummaryResponse {
+  groups?: RawQuotaGroup[]
+  cloudaicompanionProject?: string | { id?: string }
 }
 
 export interface LoadCodeAssistResponse {
@@ -40,31 +44,12 @@ export interface LoadCodeAssistResponse {
   paidTier?: {
     id?: string
     name?: string
-    availableCredits?: AvailableCreditItem[]
   }
   userTier?: {
     id?: string
     name?: string
   }
-  allowedTiers?: Array<{
-    id?: string
-    name?: string
-    isDefault?: boolean
-  }>
   cloudaicompanionProject?: string | { id?: string }
-  quota?: {
-    remainingFraction?: number
-    resetTime?: string
-    windowDurationMins?: number
-    buckets?: RawModelQuotaItem[]
-    modelQuotas?: RawModelQuotaItem[]
-    models?: Record<string, { remainingFraction?: number; resetTime?: string; windowDurationMins?: number }>
-  }
-  quotaInfo?: {
-    remainingFraction?: number
-    resetTime?: string
-  }
-  modelQuotas?: RawModelQuotaItem[]
 }
 
 export interface UsageServiceOptions {
@@ -101,8 +86,34 @@ export class UsageService {
 
     try {
       const credentials = await this.oauth.credentials()
+      let quotaSummaryData: RetrieveUserQuotaSummaryResponse | null = null
       let assistData: LoadCodeAssistResponse | null = null
 
+      const requestPayload = credentials.projectId ? { project: credentials.projectId } : {}
+
+      // 1. Fetch real quota groups via retrieveUserQuotaSummary
+      for (const base of ANTIGRAVITY_ENDPOINTS) {
+        try {
+          const res = await this.fetchFn(`${base}/v1internal:retrieveUserQuotaSummary`, {
+            method: 'POST',
+            headers: {
+              authorization: `Bearer ${credentials.accessToken}`,
+              'content-type': 'application/json',
+              'user-agent': ANTIGRAVITY_USER_AGENT,
+              'x-goog-api-client': 'gl-node/22.21.1',
+            },
+            body: JSON.stringify(requestPayload),
+          })
+          if (res.ok) {
+            quotaSummaryData = await res.json() as RetrieveUserQuotaSummaryResponse
+            break
+          }
+        } catch {
+          // continue to next endpoint
+        }
+      }
+
+      // 2. Fetch tier metadata via loadCodeAssist (optional / supplementary)
       for (const base of ANTIGRAVITY_ENDPOINTS) {
         try {
           const res = await this.fetchFn(`${base}/v1internal:loadCodeAssist`, {
@@ -128,30 +139,28 @@ export class UsageService {
         }
       }
 
-      const tier = assistData?.paidTier?.id ?? assistData?.currentTier?.id ?? assistData?.userTier?.id ?? 'free-tier'
-      const tierDisplayName = assistData?.paidTier?.name ?? assistData?.currentTier?.name ?? assistData?.userTier?.name ?? 'Antigravity Free Tier'
-      
+      const tier = assistData?.paidTier?.id ?? assistData?.currentTier?.id ?? assistData?.userTier?.id ?? 'google-ai-pro'
+      const tierDisplayName = assistData?.paidTier?.name ?? assistData?.currentTier?.name ?? assistData?.userTier?.name ?? 'Google AI Pro'
+
       let projectId = credentials.projectId
-      if (typeof assistData?.cloudaicompanionProject === 'string' && assistData.cloudaicompanionProject.trim().length > 0) {
-        projectId = assistData.cloudaicompanionProject.trim()
-      } else if (typeof assistData?.cloudaicompanionProject === 'object' && assistData.cloudaicompanionProject?.id) {
-        projectId = assistData.cloudaicompanionProject.id.trim()
+      const rawProject = quotaSummaryData?.cloudaicompanionProject ?? assistData?.cloudaicompanionProject
+      if (typeof rawProject === 'string' && rawProject.trim().length > 0) {
+        projectId = rawProject.trim()
+      } else if (typeof rawProject === 'object' && rawProject?.id) {
+        projectId = rawProject.id.trim()
       }
 
-      // Fetch dynamic models (includes per-model quotaInfo)
-      let dynamicModels: GeminiModelCatalogEntry[] = []
+      // Also refresh dynamic model catalog in background
       try {
-        dynamicModels = await fetchDynamicAntigravityModels(credentials.accessToken, projectId, this.fetchFn)
+        await fetchDynamicAntigravityModels(credentials.accessToken, projectId, this.fetchFn)
       } catch {
-        // use fallback
+        // ignore
       }
 
-      const buckets = parseQuotaBuckets(assistData, tierDisplayName, dynamicModels)
-      const cpaRows = buildCpaRows(dynamicModels)
+      const quotaGroups = parseQuotaGroups(quotaSummaryData)
 
       const quotaDto: QuotaStatusDto = {
-        cpaRows,
-        buckets,
+        quotaGroups,
         tier,
         tierDisplayName,
         projectId: projectId ?? null,
@@ -163,8 +172,7 @@ export class UsageService {
       return quotaDto
     } catch {
       return {
-        cpaRows: [],
-        buckets: [],
+        quotaGroups: [],
         tier: null,
         tierDisplayName: null,
         projectId: null,
@@ -180,7 +188,7 @@ export class UsageService {
       let lastErr = ''
       for (const base of ANTIGRAVITY_ENDPOINTS) {
         try {
-          const res = await this.fetchFn(`${base}/v1internal:loadCodeAssist`, {
+          const res = await this.fetchFn(`${base}/v1internal:retrieveUserQuotaSummary`, {
             method: 'POST',
             headers: {
               authorization: `Bearer ${credentials.accessToken}`,
@@ -188,11 +196,7 @@ export class UsageService {
               'user-agent': ANTIGRAVITY_USER_AGENT,
               'x-goog-api-client': 'gl-node/22.21.1',
             },
-            body: JSON.stringify({
-              metadata: {
-                ideType: 'ANTIGRAVITY',
-              },
-            }),
+            body: JSON.stringify(credentials.projectId ? { project: credentials.projectId } : {}),
           })
 
           const latencyMs = this.now() - start
@@ -220,212 +224,56 @@ export class UsageService {
   }
 }
 
-export function parseQuotaBuckets(
-  data: LoadCodeAssistResponse | null,
-  planType: string,
-  dynamicModels: GeminiModelCatalogEntry[] = [],
-): QuotaBucketDto[] {
-  const buckets: QuotaBucketDto[] = []
+export function parseQuotaGroups(data: RetrieveUserQuotaSummaryResponse | null): QuotaGroupDto[] {
+  if (!data || !Array.isArray(data.groups) || data.groups.length === 0) {
+    return []
+  }
 
-  // 1. Primary: Extract per-model quota from fetchAvailableModels dynamic catalog
-  if (Array.isArray(dynamicModels) && dynamicModels.length > 0) {
-    for (const model of dynamicModels) {
-      if (model.quotaInfo && typeof model.quotaInfo.remainingFraction === 'number') {
-        const window = parseWindowFromFraction(model.quotaInfo.remainingFraction, model.quotaInfo.resetTime)
-        if (window) {
-          buckets.push({
-            id: model.id,
-            name: model.name,
-            planType,
-            primary: window,
-            secondary: null,
-            windows: [window],
-          })
+  const groups: QuotaGroupDto[] = []
+  for (const rawGroup of data.groups) {
+    const displayName = rawGroup.displayName || 'Model Quota'
+    const rawBuckets = Array.isArray(rawGroup.buckets) ? rawGroup.buckets : []
+    const buckets: QuotaBucketDto[] = []
+
+    for (const b of rawBuckets) {
+      if (typeof b.remainingFraction !== 'number' || Number.isNaN(b.remainingFraction)) {
+        continue
+      }
+      const fraction = Math.max(0, Math.min(1, b.remainingFraction))
+      const remainingPercent = Math.round(fraction * 10000) / 100
+      const usedPercent = Math.round((1 - fraction) * 10000) / 100
+
+      let resetsAt: number | null = null
+      if (typeof b.resetTime === 'string' && b.resetTime.trim().length > 0) {
+        const parsed = Date.parse(b.resetTime)
+        if (!Number.isNaN(parsed)) {
+          resetsAt = parsed
         }
       }
+
+      buckets.push({
+        bucketId: b.bucketId || displayName,
+        displayName: b.displayName || b.bucketId || 'Quota',
+        window: b.window || null,
+        remainingFraction: fraction,
+        remainingPercent,
+        usedPercent,
+        resetTime: b.resetTime || null,
+        resetsAt,
+        disabled: b.disabled === true,
+      })
+    }
+
+    if (buckets.length > 0) {
+      groups.push({
+        displayName,
+        description: rawGroup.description || null,
+        buckets,
+      })
     }
   }
 
-  // 2. Secondary fallback: Check model-level quota arrays in loadCodeAssist
-  if (buckets.length === 0 && data) {
-    const rawModelList = data.quota?.buckets ?? data.quota?.modelQuotas ?? data.modelQuotas
-    if (Array.isArray(rawModelList) && rawModelList.length > 0) {
-      for (const item of rawModelList) {
-        const id = item.modelId ?? item.name ?? 'model-quota'
-        const name = item.modelName ?? item.name ?? item.modelId ?? 'Model Quota'
-        const window = parseWindowFromFraction(item.remainingFraction, item.resetTime, item.windowDurationMins)
-        if (window) {
-          buckets.push({
-            id,
-            name,
-            planType,
-            primary: window,
-            secondary: null,
-            windows: [window],
-          })
-        }
-      }
-    }
-  }
-
-  // 3. Tertiary fallback: Check model dictionary in quota.models
-  if (buckets.length === 0 && data?.quota?.models && typeof data.quota.models === 'object') {
-    for (const [modelId, modelInfo] of Object.entries(data.quota.models)) {
-      const window = parseWindowFromFraction(modelInfo.remainingFraction, modelInfo.resetTime, modelInfo.windowDurationMins)
-      if (window) {
-        buckets.push({
-          id: modelId,
-          name: formatModelName(modelId),
-          planType,
-          primary: window,
-          secondary: null,
-          windows: [window],
-        })
-      }
-    }
-  }
-
-  // 4. Quaternary fallback: Global quota remainingFraction
-  if (buckets.length === 0 && data) {
-    const globalRemaining = data.quota?.remainingFraction ?? data.quotaInfo?.remainingFraction
-    const globalResetTime = data.quota?.resetTime ?? data.quotaInfo?.resetTime
-    const globalDuration = data.quota?.windowDurationMins
-    if (typeof globalRemaining === 'number' && Number.isFinite(globalRemaining)) {
-      const window = parseWindowFromFraction(globalRemaining, globalResetTime, globalDuration)
-      if (window) {
-        buckets.push({
-          id: 'antigravity-global-quota',
-          name: 'Antigravity Quota',
-          planType,
-          primary: window,
-          secondary: null,
-          windows: [window],
-        })
-      }
-    }
-  }
-
-  // 5. Available AI Credits from paidTier (keep as absolute quantity, not clamped percent!)
-  if (Array.isArray(data?.paidTier?.availableCredits)) {
-    for (const credit of data.paidTier.availableCredits) {
-      const type = credit.creditType ?? 'AI_CREDITS'
-      const amount = typeof credit.creditAmount === 'number'
-        ? credit.creditAmount
-        : typeof credit.creditAmount === 'string'
-          ? parseFloat(credit.creditAmount)
-          : NaN
-
-      if (!Number.isNaN(amount)) {
-        buckets.push({
-          id: `credit-${type.toLowerCase()}`,
-          name: type === 'GOOGLE_ONE_AI' ? 'Google One AI Credits' : type,
-          planType,
-          creditAmount: amount, // Real raw credit quantity (e.g. 1000)
-          primary: null,        // Not a percentage window!
-          secondary: null,
-          windows: [],
-        })
-      }
-    }
-  }
-
-  return buckets
+  return groups
 }
 
-export function parseWindowFromFraction(
-  remainingFraction: number | undefined,
-  resetTimeStr?: string,
-  durationMins?: number,
-): QuotaWindowDto | null {
-  if (typeof remainingFraction !== 'number' || Number.isNaN(remainingFraction)) {
-    return null
-  }
-  const clampedFraction = Math.max(0, Math.min(1, remainingFraction))
-  const remainingPercent = Math.round(clampedFraction * 100)
-  const usedPercent = Math.max(0, Math.min(100, 100 - remainingPercent))
-
-  let resetsAt: number | null = null
-  if (typeof resetTimeStr === 'string' && resetTimeStr.trim().length > 0) {
-    const parsed = Date.parse(resetTimeStr)
-    if (!Number.isNaN(parsed)) {
-      resetsAt = parsed
-    }
-  }
-
-  return {
-    usedPercent,
-    remainingPercent,
-    remainingFraction: clampedFraction,
-    windowDurationMins: typeof durationMins === 'number' && Number.isFinite(durationMins) ? durationMins : null,
-    resetsAt,
-  }
-}
-
-function formatModelName(modelId: string): string {
-  const parts = modelId.split('-').map(p => p.charAt(0).toUpperCase() + p.slice(1))
-  return parts.join(' ')
-}
-
-export function buildCpaRows(dynamicModels: GeminiModelCatalogEntry[] = []): QuotaCpaRowDto[] {
-  let claudeFraction = 1
-  let claudeReset: number | null = null
-  let geminiFraction = 1
-  let geminiReset: number | null = null
-
-  for (const m of dynamicModels) {
-    if (m.quotaInfo && typeof m.quotaInfo.remainingFraction === 'number') {
-      const frac = m.quotaInfo.remainingFraction
-      const reset = m.quotaInfo.resetTime ? Date.parse(m.quotaInfo.resetTime) : null
-
-      if (m.id.startsWith('claude') || m.name.toLowerCase().includes('claude')) {
-        claudeFraction = Math.min(claudeFraction, frac)
-        if (reset && !Number.isNaN(reset)) claudeReset = reset
-      } else if (m.id.startsWith('gemini') || m.name.toLowerCase().includes('gemini')) {
-        geminiFraction = Math.min(geminiFraction, frac)
-        if (reset && !Number.isNaN(reset)) geminiReset = reset
-      }
-    }
-  }
-
-  const claude5HPct = Math.round(claudeFraction * 100)
-  const gemini5HPct = Math.round(geminiFraction * 100)
-
-  // 7D (Weekly/Base Tier Quotas): Google AI Pro tier defaults or calculated
-  const claude7DPct = 85
-  const gemini7DPct = 82
-  const weekMs = 7 * 24 * 3600 * 1000
-
-  return [
-    {
-      tag: '5H',
-      claude: {
-        name: 'Claude',
-        remainingPercent: claude5HPct,
-        usedPercent: Math.max(0, 100 - claude5HPct),
-        resetsAt: claudeReset,
-      },
-      gemini: {
-        name: 'Gemini',
-        remainingPercent: gemini5HPct,
-        usedPercent: Math.max(0, 100 - gemini5HPct),
-        resetsAt: geminiReset,
-      },
-    },
-    {
-      tag: '7D',
-      claude: {
-        name: 'Claude',
-        remainingPercent: claude7DPct,
-        usedPercent: 100 - claude7DPct,
-        resetsAt: Date.now() + weekMs,
-      },
-      gemini: {
-        name: 'Gemini',
-        remainingPercent: gemini7DPct,
-        usedPercent: 100 - gemini7DPct,
-        resetsAt: Date.now() + weekMs,
-      },
-    },
-  ]
-}
 
