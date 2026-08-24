@@ -1,4 +1,4 @@
-import { ReasoningEffortId, type LlmModelInfo, type LlmResolvedModelInfo } from '@deepseek-ai/dsh-llm'
+import type { LlmModelInfo, LlmResolvedModelInfo, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import {
   ANTIGRAVITY_ENDPOINTS,
   ANTIGRAVITY_USER_AGENT,
@@ -172,11 +172,11 @@ export function resolveGeminiModel(
     defaultMaxTokens: entry.maxOutputTokens,
     reasoning: entry.reasoning ? {
       efforts: [
-        { id: ReasoningEffortId('low'), name: 'Low' },
-        { id: ReasoningEffortId('medium'), name: 'Medium' },
-        { id: ReasoningEffortId('high'), name: 'High' },
+        { id: 'low' as ReasoningEffortId, name: 'Low' },
+        { id: 'medium' as ReasoningEffortId, name: 'Medium' },
+        { id: 'high' as ReasoningEffortId, name: 'High' },
       ],
-      defaultEffort: ReasoningEffortId('medium'),
+      defaultEffort: 'medium' as ReasoningEffortId,
     } : undefined,
   }
 }

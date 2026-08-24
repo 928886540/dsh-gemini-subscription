@@ -207,7 +207,7 @@ export function GeminiSubscriptionSection({ t }: Props): React.JSX.Element {
               <>
                 <InfoRow label={t('plan')} value={account?.planType ?? 'Google AI Pro'} />
                 <InfoRow label={t('projectId')} value={account?.projectId ?? '—'} />
-                <InfoRow label={t('expires')} value={formatDate(account?.tokenExpiresAt)} />
+                <InfoRow label={t('expires')} value={t('tokenAutoRenew')} />
               </>
             ) : null}
             <InfoRow label={t('storage')} value={storageLabel(status?.storage, t)} />
