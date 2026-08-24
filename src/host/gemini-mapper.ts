@@ -115,6 +115,17 @@ export async function mapGenerateOptionsToGeminiPayload(
   let systemText = options.system || ''
   const contents: GeminiContent[] = []
 
+  const toolCallNameMap = new Map<string, string>()
+  for (const message of options.messages) {
+    if (message.role === 'assistant') {
+      for (const block of message.content) {
+        if (block.type === 'tool-call') {
+          toolCallNameMap.set(String(block.id), block.name)
+        }
+      }
+    }
+  }
+
   for (const message of options.messages) {
     if (message.role === 'system') {
       for (const block of message.content) {
@@ -153,9 +164,13 @@ ${block.text}` : block.text
           } catch {
             parsed = { output: textResult }
           }
+          const toolName = ('toolName' in block && typeof block.toolName === 'string' && block.toolName)
+            ? block.toolName
+            : toolCallNameMap.get(String(block.toolCallId)) || 'tool'
+
           parts.push({
             functionResponse: {
-              name: 'tool_result',
+              name: toolName,
               id: String(block.toolCallId),
               response: parsed,
             },
@@ -182,13 +197,19 @@ ${block.text}` : block.text
           } catch {
             parsedArgs = {}
           }
-          parts.push({
+          const sig = (block as { thoughtSignature?: string; signature?: string }).thoughtSignature
+            || (block as { thoughtSignature?: string; signature?: string }).signature
+          const functionCallPart: GeminiPart = {
             functionCall: {
               id: String(block.id),
               name: block.name,
               args: parsedArgs,
             },
-          })
+          }
+          if (sig) {
+            (functionCallPart as Record<string, unknown>).thoughtSignature = sig
+          }
+          parts.push(functionCallPart)
         }
       }
       if (parts.length > 0) {
@@ -320,13 +341,18 @@ export async function* parseGeminiStream(
               : JSON.stringify(part.functionCall.args ?? {})
             activeToolIndex = nextIndex++
             yield { type: 'block-start', index: activeToolIndex, blockType: 'tool-call' }
-            yield {
+            const chunk: StreamChunk = {
               type: 'tool-call-delta',
               index: activeToolIndex,
               id: callId,
               name: part.functionCall.name,
               argumentsDelta: argsStr,
             }
+            const sig = (part as { thoughtSignature?: string }).thoughtSignature
+            if (sig) {
+              (chunk as Record<string, unknown>).thoughtSignature = sig
+            }
+            yield chunk
           }
         }
 
