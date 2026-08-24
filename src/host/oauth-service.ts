@@ -73,6 +73,7 @@ export interface OAuthServiceOptions {
   logger?: Pick<Console, 'info' | 'warn'>
   loginTimeoutMs?: number
   preferredPort?: number
+  onAuthChanged?: () => void
 }
 
 export class OAuthService {
@@ -82,6 +83,7 @@ export class OAuthService {
   private readonly logger: Pick<Console, 'info' | 'warn'>
   private readonly loginTimeoutMs: number
   private readonly preferredPort?: number
+  private readonly onAuthChanged?: () => void
   private readonly loginEvents = new Map<string, LoginEventDto>()
   private readonly listeners = new Map<string, Set<LoginListener>>()
   private activeLogin: ActiveLogin | null = null
@@ -96,6 +98,7 @@ export class OAuthService {
     this.logger = options.logger ?? console
     this.loginTimeoutMs = options.loginTimeoutMs ?? OAUTH_LOGIN_TIMEOUT_MS
     this.preferredPort = options.preferredPort
+    this.onAuthChanged = options.onAuthChanged
   }
 
   async status(): Promise<OAuthStatusDto> {
@@ -211,6 +214,7 @@ export class OAuthService {
     })
     this.lastLoginError = undefined
     this.logger.info('[dsh-gemini-subscription] OAuth credentials cleared')
+    this.onAuthChanged?.()
   }
 
   async credentials(forceRefresh = false): Promise<StoredOAuthCredentials> {
@@ -262,18 +266,27 @@ export class OAuthService {
     const profile = await this.fetchUserProfile(rawCredentials.accessToken).catch(() => null)
     const codeAssist = await this.fetchCodeAssistInfo(rawCredentials.accessToken).catch(() => null)
 
+    let projectId: string | undefined
+    const rawProject = codeAssist?.cloudaicompanionProject
+    if (typeof rawProject === 'string' && rawProject.trim().length > 0) {
+      projectId = rawProject.trim()
+    } else if (typeof rawProject === 'object' && (rawProject as any)?.id) {
+      projectId = (rawProject as any).id.trim()
+    }
+
     const finalCredentials: StoredOAuthCredentials = {
       ...rawCredentials,
       email: (profile?.email && typeof profile.email === 'string') ? profile.email : rawCredentials.email,
       name: (profile?.name && typeof profile.name === 'string') ? profile.name : rawCredentials.name,
       picture: (profile?.picture && typeof profile.picture === 'string') ? profile.picture : rawCredentials.picture,
-      planType: codeAssist?.paidTier?.name ?? codeAssist?.currentTier?.name ?? 'Free Tier',
-      projectId: codeAssist?.cloudaicompanionProject ?? rawCredentials.projectId ?? 'default-cli-project',
+      planType: codeAssist?.paidTier?.name ?? codeAssist?.currentTier?.name,
+      projectId: projectId ?? rawCredentials.projectId,
     }
 
     await this.store.save(finalCredentials).catch(() => {
       throw new OAuthServiceError('storage-failed', 'Google credentials could not be saved securely.')
     })
+    this.onAuthChanged?.()
   }
 
   private refreshCredentials(stored: StoredOAuthCredentials): Promise<StoredOAuthCredentials> {
@@ -466,7 +479,7 @@ export function buildAuthorizationUrl(verifier: string, state: string, redirectU
     code_challenge: challenge,
     code_challenge_method: 'S256',
     access_type: 'offline',
-    prompt: 'consent',
+    prompt: 'select_account consent',
   })
   return `${GOOGLE_OAUTH_AUTHORIZE_URL}?${params.toString()}`
 }

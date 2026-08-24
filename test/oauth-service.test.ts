@@ -16,7 +16,7 @@ describe('OAuth Service', () => {
     expect(parsed.searchParams.get('state')).toBe('state-123')
     expect(parsed.searchParams.get('redirect_uri')).toBe(redirectUri)
     expect(parsed.searchParams.get('access_type')).toBe('offline')
-    expect(parsed.searchParams.get('prompt')).toBe('consent')
+    expect(parsed.searchParams.get('prompt')).toBe('select_account consent')
 
     // Verify all 5 Antigravity scopes
     const scopeParam = parsed.searchParams.get('scope') ?? ''

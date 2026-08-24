@@ -23,8 +23,13 @@ export const inject = ['webServer', 'llm', 'attachments', 'tools', 'web', 'setti
 
 export function apply(ctx: Context): void {
   const store = createPlatformTokenStore()
-  const oauth = new OAuthService(store, { logger: ctx.logger, preferredPort: DEFAULT_CALLBACK_PORT })
-  const usage = new UsageService(oauth)
+  let usage: UsageService
+  const oauth = new OAuthService(store, {
+    logger: ctx.logger,
+    preferredPort: DEFAULT_CALLBACK_PORT,
+    onAuthChanged: () => usage?.invalidate(),
+  })
+  usage = new UsageService(oauth)
   const preferences = registerPreferenceStore(ctx.settings)
   const client = new GeminiClient(oauth, ctx.attachments, {
     logger: ctx.logger,
